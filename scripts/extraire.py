@@ -3,7 +3,7 @@ r"""Récupère les offres France Travail des métiers suivis et les enregistre d
 Usage :
     .venv\Scripts\python.exe scripts\extraire.py                 # tous les métiers de METIERS
     .venv\Scripts\python.exe scripts\extraire.py --verifier      # teste seulement la connexion
-    .venv\Scripts\python.exe scripts\extraire.py --rome D1401    # le profil suivi
+    .venv\Scripts\python.exe scripts\extraire.py --rome D1401    # un seul code ROME
 
 Ce que ça écrit :
     data/brut/<AAAA-MM>/<ROME>.jsonl   une ligne par offre complète (JSON tel que l'API le renvoie),
@@ -33,10 +33,28 @@ from dotenv import load_dotenv
 RACINE = Path(__file__).resolve().parent.parent
 load_dotenv(RACINE / ".env")
 
-# Le profil suivi : code ROME -> (libellé, groupe, coché par défaut sur la page).
+# Les profils suivis : code ROME -> (libellé, groupe, coché par défaut sur la page).
 METIERS = {
     "D1401": ("Assistant(e) commercial(e)", "Assistant commercial", True),
+    "D1402": ("Responsable commercial(e) grands comptes / business developer", "Développement commercial", True),
 }
+
+
+def code_rome(offre, code_recherche):
+    """Privilégie le code ROME porté par l'offre, avec le code interrogé en repli."""
+    code = offre.get("romeCode")
+    return code if code in METIERS else code_recherche
+
+
+def fusionner_actives(existantes, nouvelles, codes_relances):
+    """Remplace les résultats relancés et ne conserve qu'une ligne par identifiant d'offre."""
+    nouvelles_par_id = {ligne[1]: ligne for ligne in nouvelles}
+    fusion = [ligne for ligne in existantes
+              if ligne[0] not in codes_relances and ligne[1] not in nouvelles_par_id]
+    fusion.extend(nouvelles_par_id.values())
+    uniques = {ligne[1]: ligne for ligne in fusion}
+    return sorted(uniques.values())
+
 
 TOKEN_URL = "https://entreprise.francetravail.fr/connexion/oauth2/access_token?realm=/partenaire"
 SEARCH_URL = "https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search"
@@ -127,6 +145,7 @@ def main():
         nouvelles = modifiees = 0
         with (RACINE / "data" / "brut" / mois / f"{code}.jsonl").open("a", encoding="utf-8") as brut:
             for o in offres:
+                rome = code_rome(o, code)
                 e = empreinte(o)
                 if (o["id"], e) not in vues:
                     if o["id"] in ids_connus:
@@ -136,8 +155,8 @@ def main():
                         ids_connus.add(o["id"])
                     vues.add((o["id"], e))
                     brut.write(json.dumps({"id": o["id"], "empreinte": e, "vu_le": aujourdhui,
-                                           "rome": code, "offre": o}, ensure_ascii=False) + "\n")
-                actives.append((code, o["id"], (o.get("dateActualisation") or "")[:10]))
+                                           "rome": rome, "offre": o}, ensure_ascii=False) + "\n")
+                actives.append((rome, o["id"], (o.get("dateActualisation") or "")[:10]))
         lignes_serie.append([aujourdhui, code, total if total is not None else len(offres),
                              len(offres), nouvelles, modifiees])
         print(f"{code}  {METIERS[code][0]:<48} {len(offres):5d} offres, {nouvelles:4d} nouvelles, {modifiees:3d} modifiées")
@@ -145,13 +164,15 @@ def main():
 
     # Même logique pour les actives du jour : on remplace les codes relancés, on garde les autres.
     fichier_actives = RACINE / "data" / "actives" / f"{aujourdhui}.csv"
+    existantes = []
     if fichier_actives.exists():
         with fichier_actives.open(encoding="utf-8") as f:
-            actives = [tuple(r) for r in list(csv.reader(f))[1:] if r[0] not in codes] + actives
+            existantes = [tuple(r) for r in list(csv.reader(f))[1:]]
+    actives = fusionner_actives(existantes, actives, codes)
     with fichier_actives.open("w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["rome", "id", "date_actualisation"])
-        w.writerows(sorted(actives))
+        w.writerows(actives)
 
     serie = RACINE / "data" / "serie.csv"
     lignes = []
