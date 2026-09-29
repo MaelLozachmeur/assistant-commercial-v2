@@ -59,7 +59,17 @@ const dateFr = (s, bref = false) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(
 const age = o => { const jour = Date.parse(D.date), t = Date.parse(o.date); return (isFinite(jour) && isFinite(t)) ? (jour - t) / 86400000 : null; };
 
 const couleur = "#0a5cff", pale = "rgba(10,92,255,.25)";
-const COULEURS = { "Assistant commercial": "#0a5cff", "Développement commercial": "#138a5b" };
+const COULEURS = {
+  "Assistanat commercial": "#0a5cff",
+  "Vente et relation commerciale": "#138a5b",
+  "Management commercial": "#8a4fb5",
+  "Technico-commercial": "#c75b12",
+  "Vente à distance": "#167d8d",
+  "Vente B2B spécialisée": "#7254a3",
+  "Administration des ventes": "#b24c78",
+  "Relation clientèle": "#446b35",
+  "Stratégie commerciale": "#3856a6",
+};
 // Palette des niveaux : du clair au foncé, assistant → directeur, « autre » en gris. Valable sur toute la page.
 const COUL_NIV = { assistant: "#a7c9ff", charge: "#5f9bf5", responsable: "#2a6ad4", directeur: "#123a7a", autre: "#b4b4bc" };
 // Sur ces trois teintes claires, le texte blanc n'est pas lisible : on écrit en encre foncée.
@@ -342,8 +352,17 @@ const Commun = {
       if (Array.isArray(d.formations) && d.formations.length) FORMATIONS = d.formations;
 
       const sous = document.getElementById("sous");
-      if (sous) sous.innerHTML =
-        `${d.source} · ${d.requete} · extraction du <b>${dateFr(d.date)}</b> · ${d.offres.length} offres actives, ${d.versions_conservees} versions d'annonces conservées`;
+      if (sous) {
+        const plafonnees = (d.limites_collecte && d.limites_collecte.codes_plafonnes) || [];
+        const plafond = d.limites_collecte && d.limites_collecte.resultats_max_par_code_rome;
+        const avertissement = plafonnees.length
+          ? ` · plafond atteint pour ${plafonnees.join(", ")}`
+          : "";
+        sous.textContent =
+          `${d.source} · ${d.requete} · extraction du ${dateFr(d.date)} · ${d.offres.length} offres actives, ${d.versions_conservees} versions conservées` +
+          (plafond ? ` · maximum ${plafond.toLocaleString("fr-FR")} résultats par code ROME` : "") +
+          avertissement;
+      }
 
       let memo = null;
       try { memo = JSON.parse(localStorage.getItem("metiers-filtres")); } catch (e) {}
@@ -356,7 +375,7 @@ const Commun = {
       if (memoM && memoM.length === 0 && memo.metiers.length > 0) memoM = null;
       document.getElementById("metiers").innerHTML = groupes.map(g => `<h4 style="color:${COULEURS[g] || ""}">${g}</h4>` +
         d.metiers.filter(m => m.groupe === g).map(m =>
-          `<label><input type="checkbox" value="${m.code}" data-groupe="${m.groupe}" ${(memoM ? memoM.includes(m.code) : m.coche) ? "checked" : ""}> ${m.libelle} <small>${m.code} · ${m.actives}</small></label>`).join("")).join("");
+          `<label><input type="checkbox" value="${m.code}" data-groupe="${m.groupe}" ${(memoM ? memoM.includes(m.code) : m.coche) ? "checked" : ""}> ${m.libelle} <small>${m.code} · ${m.collecte === false ? "à collecter" : m.actives}</small></label>`).join("")).join("");
       // Une case par groupe : cocher/décocher le groupe entier, cumulables ; état intermédiaire si le groupe est partiel.
       document.getElementById("groupes").innerHTML = groupes.map(g =>
         `<label style="color:${COULEURS[g] || ""}"><input type="checkbox" data-groupe-case="${g}"> ${g}</label>`).join("");

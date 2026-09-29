@@ -24,6 +24,8 @@
 
   <h2 id="limites">Ce que ces chiffres n'autorisent pas à conclure</h2>
   <p class="note">Un seul canal : les chiffres reflètent les offres France Travail, pas l'ensemble des recrutements publiés sur d'autres plateformes ou directement par les entreprises.
+  La recherche est plafonnée à 1 150 résultats par code ROME. Au-delà, le total annoncé par l'API dépasse les offres récupérées : les graphiques décrivent le seul échantillon collecté et ne sont pas exhaustifs.
+  Le périmètre est une sélection de codes commerciaux pertinents, pas l'ensemble des métiers de vente : il exclut notamment les spécialités de vente au détail et le conseil en information médicale. Une catégorie indiquée « à collecter » n'a pas encore fait l'objet d'une extraction dans le résumé affiché.
   Les salaires sont ceux des offres qui les affichent, moins d'un tiers : biais probable vers le bas et vers les PME ; le net mensuel est une estimation (brut × 0,78 / 12, avant impôt sur le revenu).
   Le niveau de poste (assistant·e, chargé·e, responsable, directeur·rice) est déduit de l'intitulé de l'annonce : c'est une approximation, un « chef de projet » n'encadre pas toujours.
   La formation et la qualification ne sont renseignées que par une minorité d'annonces : les pourcentages qui s'y rapportent portent sur ce petit sous-ensemble, pas sur tout le marché.
@@ -35,7 +37,7 @@
   <footer id="pied"></footer>
 </main>
 
-<script src="assets/commun.js?v=6"></script>
+<script src="assets/commun.js?v=7"></script>
 <script>
 /* ============ Le marché bouge ============ */
 function rendre(offres, D) {
@@ -44,15 +46,26 @@ function rendre(offres, D) {
   // Ne pas transformer en zéros les jours où tous les métiers sélectionnés n'étaient pas encore collectés.
   const serie = f.metiers.size ? (D.serie || [])
     .filter(j => [...f.metiers].every(c => j.par_metier && Object.prototype.hasOwnProperty.call(j.par_metier, c)))
-    .map(j => ({ date: j.date, total: [...f.metiers].reduce((s, c) => s + j.par_metier[c], 0) })) : [];
+    .map(j => ({ date: j.date, total: [...f.metiers].reduce((s, c) =>
+      s + ((j.recuperees_par_metier && j.recuperees_par_metier[c] != null)
+        ? j.recuperees_par_metier[c] : j.par_metier[c]), 0) })) : [];
   dessiner("g-serie", "line",
     { labels: serie.map(x => dateFr(x.date, true)), datasets: [{ data: serie.map(x => x.total), borderColor: couleur, backgroundColor: pale, fill: true, tension: .2, pointRadius: 4 }] },
     { scales: { y: { beginAtZero: true } } });
   document.getElementById("note-serie").textContent = !f.metiers.size
     ? "Cochez au moins un métier commercial pour afficher l'historique."
-    : serie.length < 2
+    : serie.length === 0
+    ? "Aucune extraction commune aux catégories sélectionnées pour l'instant. L'historique commencera après leur première collecte."
+    : serie.length === 1
     ? "Une seule extraction pour l'instant : la tendance apparaîtra au fil des jours. L'Action GitHub relance la collecte chaque jour."
-    : `${serie.length} extractions, du ${dateFr(serie[0].date)} au ${dateFr(serie[serie.length - 1].date)}. Ce compte suit le profil sélectionné, pas les autres filtres.`;
+    : `${serie.length} extractions, du ${dateFr(serie[0].date)} au ${dateFr(serie[serie.length - 1].date)}. La courbe compte les offres récupérées; elle suit le profil sélectionné, pas les autres filtres.`;
+  const plafonnees = D.metiers.filter(m => f.metiers.has(m.code) && m.plafonnee);
+  if (plafonnees.length) {
+    const maximum = D.limites_collecte && D.limites_collecte.resultats_max_par_code_rome || 1150;
+    document.getElementById("note-serie").textContent +=
+      ` Plafond de ${maximum.toLocaleString("fr-FR")} atteint pour ${plafonnees.map(m =>
+        `${m.code} (${m.recuperees} récupérées sur ${m.total_annonce} annoncées)`).join(", ")} : résultats incomplets.`;
+  }
 
   const FRAIS = [["Moins de 7 jours", j => j < 7], ["7 à 30 jours", j => j >= 7 && j < 30], ["1 à 3 mois", j => j >= 30 && j < 90], ["Plus de 3 mois", j => j >= 90]];
   const ages = offres.map(age).filter(j => j != null && j >= 0);
