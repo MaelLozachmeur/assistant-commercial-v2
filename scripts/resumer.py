@@ -29,9 +29,9 @@ import requests
 
 RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE / "scripts"))
-from extraire import METIERS  # noqa: E402  (la liste des métiers vit dans un seul fichier)
+from extraire import METIERS, code_rome  # noqa: E402  (la liste des métiers vit dans un seul fichier)
 
-# Les outils et compétences recherchés dans les annonces d'assistanat commercial.
+# Les outils et compétences recherchés dans les annonces des métiers commerciaux.
 # Chaque entrée : libellé affiché -> variantes cherchées (mot entier, insensible à la casse).
 OUTILS = {
     "CRM": ["crm", "salesforce", "hubspot", "sellsy", "dynamics"],
@@ -41,6 +41,8 @@ OUTILS = {
     "Suivi des commandes": ["suivi des commandes", "suivi de commande", "commande client", "livraison"],
     "Relation client": ["relation client", "service client", "satisfaction client", "fidélisation"],
     "Prospection commerciale": ["prospection", "prospecter", "développement commercial"],
+    "Négociation et vente": ["négociation", "négocier", "closing", "vente complexe", "cycle de vente"],
+    "Gestion de comptes clés": ["grands comptes", "key account", "compte clé", "portefeuille clients"],
     "Reporting et tableaux de bord": ["reporting", "tableau de bord", "power bi"],
     "Communication écrite et orale": ["rédaction", "communication écrite", "accueil téléphonique", "courriel"],
     "Anglais": ["anglais", "english"],
@@ -268,8 +270,8 @@ def main():
         raise SystemExit("Aucune extraction : lancez d'abord scripts/extraire.py")
     jour = jours[-1].stem
     with jours[-1].open(encoding="utf-8") as f:
-        actives = [(r["rome"], r["id"]) for r in csv.DictReader(f)]
-    ids_actifs = {i for _, i in actives}
+        actives_brutes = {r["id"]: r["rome"] for r in csv.DictReader(f)}
+    ids_actifs = set(actives_brutes)
 
     # Dernière version connue de chaque offre active (les fichiers sont lus dans l'ordre des mois).
     versions = {}
@@ -285,11 +287,14 @@ def main():
 
     geo = Geocodeur()
     offres = []
-    for rome, oid in actives:
+    actives = {}
+    for oid, rome_recherche in actives_brutes.items():
         v = versions.get(oid)
         if not v:
             continue
         o = v["offre"]
+        rome = code_rome(o, rome_recherche)
+        actives[oid] = rome
         lieu = o.get("lieuTravail") or {}
         texte = (o.get("intitule") or "") + " " + (o.get("description") or "")
         t = texte.lower()
@@ -335,9 +340,9 @@ def main():
     resume = {
         "date": jour,
         "source": "France Travail — API Offres d'emploi v2",
-        "requete": "une requête codeROME par métier, France entière",
+        "requete": "une requête codeROME par métier, France entière; offres actives dédoublonnées par identifiant",
         "metiers": [{"code": c, "libelle": l, "groupe": g, "coche": k,
-                     "actives": sum(1 for o in offres if o["rome"] == c)}
+                     "actives": sum(1 for code in actives.values() if code == c)}
                     for c, (l, g, k) in METIERS.items()],
         "outils": list(OUTILS),
         "contrats": {c: contrat_libelle(c)

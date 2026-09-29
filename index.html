@@ -14,9 +14,9 @@
 <body>
 <main>
   <div id="nav-ici"></div>
-  <h1>Assistant commercial <small>— le marché de l'emploi, lu dans les offres</small></h1>
+  <h1>Les métiers commerciaux <small>— le marché de l'emploi, lu dans les offres</small></h1>
   <p class="sous" id="sous">Chargement des données…</p>
-  <p class="phrase">Le quotidien d'un assistant commercial se joue entre le suivi des clients, des devis et des commandes, la préparation des dossiers et la coordination avec les équipes de vente. Explorez les offres publiées, les compétences demandées, les salaires annoncés et les employeurs qui recrutent.</p>
+  <p class="phrase">De l'assistanat commercial au développement de comptes clés, les métiers commerciaux couvrent le suivi des clients, la prospection, la négociation et la coordination avec les équipes de vente. Explorez les offres publiées, les compétences demandées, les salaires annoncés et les employeurs qui recrutent.</p>
 
   <!-- ============ 1. FILTRES (posés par commun.js) ============ -->
   <div id="filtres-ici"></div>
@@ -26,7 +26,7 @@
   <div class="chiffres" id="chiffres"></div>
 
   <!-- ============ 3. OÙ SONT LES OFFRES ============ -->
-  <h2>Où sont les offres d'assistant commercial</h2>
+  <h2>Où sont les offres commerciales</h2>
   <div class="carte large"><h3>Chaque point est une offre — survolez pour la lire, cliquez pour l'ouvrir</h3>
     <div class="carte-outils">
       <button data-vue="france">France</button>
@@ -35,7 +35,7 @@
       <button data-vue="paris">Île-de-France</button>
       <button data-fond="gris" class="actif">Fond gris</button>
       <button data-fond="osm">Fond OpenStreetMap</button>
-      <span class="legende"><span><i style="background:#0a5cff"></i>assistant commercial (ROME D1401)</span></span>
+      <span class="legende" id="legende-metiers"></span>
     </div>
     <div id="map"></div>
     <p class="note" id="note-carte"></p></div>
@@ -57,7 +57,7 @@
   <footer id="pied"></footer>
 </main>
 
-<script src="assets/commun.js?v=5"></script>
+<script src="assets/commun.js?v=6"></script>
 <script>
 /* ============ Accueil : chiffres, carte, départements, contrats ============ */
 let carte, calque;
@@ -65,6 +65,8 @@ let carte, calque;
 function rendre(offres, D) {
   const lib = Commun.lib;
   const n = offres.length;
+  document.getElementById("legende-metiers").innerHTML = D.metiers.map(m =>
+    `<span><i style="background:${COULEURS[m.groupe] || couleur}"></i>${m.libelle} (ROME ${m.code})</span>`).join("");
 
   /* ---- En chiffres ---- */
   const avecSal = offres.filter(o => o.smin != null);

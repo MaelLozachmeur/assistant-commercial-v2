@@ -59,7 +59,7 @@ const dateFr = (s, bref = false) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(
 const age = o => { const jour = Date.parse(D.date), t = Date.parse(o.date); return (isFinite(jour) && isFinite(t)) ? (jour - t) / 86400000 : null; };
 
 const couleur = "#0a5cff", pale = "rgba(10,92,255,.25)";
-const COULEURS = { "Assistant commercial": "#0a5cff" };
+const COULEURS = { "Assistant commercial": "#0a5cff", "Développement commercial": "#138a5b" };
 // Palette des niveaux : du clair au foncé, assistant → directeur, « autre » en gris. Valable sur toute la page.
 const COUL_NIV = { assistant: "#a7c9ff", charge: "#5f9bf5", responsable: "#2a6ad4", directeur: "#123a7a", autre: "#b4b4bc" };
 // Sur ces trois teintes claires, le texte blanc n'est pas lisible : on écrit en encre foncée.
@@ -229,7 +229,7 @@ const PAGE_ICI = (location.pathname.split("/").pop() || "index.html");
 const HTML_FILTRES = `
   <div class="filtres">
     <div>
-      <h3>Le métier suivi</h3>
+      <h3>Les métiers suivis</h3>
       <div class="metiers" id="metiers"></div>
       <div class="boutons">
         <button data-groupe="tous">Tout cocher</button>
@@ -330,14 +330,11 @@ const Commun = {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       return r.json();
     }).then(d => {
-      if (!d.metiers || !d.offres) throw new Error("ancien format de resume.json — rechargez la page (Ctrl+F5)");
-      const cible = d.metiers.find(m => m.code === "D1401");
-      if (!cible || d.offres.some(o => o.rome !== "D1401")) {
-        afficherRepli("La veille est configurée pour le métier d'assistant commercial (ROME D1401), mais le dernier résumé disponible concerne un autre périmètre. Aucune ancienne statistique n'est affichée. La collecte France Travail est planifiée chaque jour; pour la lancer dès maintenant, renseignez FT_CLIENT_ID et FT_CLIENT_SECRET dans Settings > Secrets and variables > Actions, puis lancez le workflow « veille ». En local, configurez le fichier .env à partir de .env.example.");
-        const sous = document.getElementById("sous");
-        if (sous) sous.textContent = "Données assistant commercial en attente de la première extraction France Travail.";
-        return;
-      }
+      if (!Array.isArray(d.metiers) || !Array.isArray(d.offres))
+        throw new Error("ancien format de resume.json — rechargez la page (Ctrl+F5)");
+      const codes = new Set(d.metiers.map(m => m.code));
+      if (!codes.size || d.offres.some(o => !codes.has(o.rome)))
+        throw new Error("les codes ROME des offres ne correspondent pas à la taxonomie du résumé");
       D = d;
       Commun.D = d;
       Commun.lib = Object.fromEntries(d.metiers.map(m => [m.code, m]));

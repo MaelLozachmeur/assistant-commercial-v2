@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Évolution du marché — assistant commercial</title>
+<title>Évolution des métiers commerciaux — les offres</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <link rel="stylesheet" href="assets/commun.css?v=3">
 </head>
@@ -35,13 +35,13 @@
   <footer id="pied"></footer>
 </main>
 
-<script src="assets/commun.js?v=5"></script>
+<script src="assets/commun.js?v=6"></script>
 <script>
 /* ============ Le marché bouge ============ */
 function rendre(offres, D) {
   const f = Commun.f;
 
-  // Ne pas transformer en zéros les jours où ce ROME n'était pas encore collecté.
+  // Ne pas transformer en zéros les jours où tous les métiers sélectionnés n'étaient pas encore collectés.
   const serie = f.metiers.size ? (D.serie || [])
     .filter(j => [...f.metiers].every(c => j.par_metier && Object.prototype.hasOwnProperty.call(j.par_metier, c)))
     .map(j => ({ date: j.date, total: [...f.metiers].reduce((s, c) => s + j.par_metier[c], 0) })) : [];
@@ -49,7 +49,7 @@ function rendre(offres, D) {
     { labels: serie.map(x => dateFr(x.date, true)), datasets: [{ data: serie.map(x => x.total), borderColor: couleur, backgroundColor: pale, fill: true, tension: .2, pointRadius: 4 }] },
     { scales: { y: { beginAtZero: true } } });
   document.getElementById("note-serie").textContent = !f.metiers.size
-    ? "Cochez le profil assistant commercial pour afficher l'historique."
+    ? "Cochez au moins un métier commercial pour afficher l'historique."
     : serie.length < 2
     ? "Une seule extraction pour l'instant : la tendance apparaîtra au fil des jours. L'Action GitHub relance la collecte chaque jour."
     : `${serie.length} extractions, du ${dateFr(serie[0].date)} au ${dateFr(serie[serie.length - 1].date)}. Ce compte suit le profil sélectionné, pas les autres filtres.`;
