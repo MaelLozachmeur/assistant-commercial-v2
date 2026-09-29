@@ -14,7 +14,7 @@ Ce que ça écrit :
 
 Les identifiants sont lus dans le fichier .env (voir .env.example) ou dans l'environnement
 (secrets GitHub Actions). API : https://francetravail.io/data/api/offres-emploi —
-150 offres par appel, 1 150 par requête, total réel dans l'en-tête Content-Range.
+150 offres par appel, 1 150 par code ROME, total réel dans l'en-tête Content-Range.
 """
 import argparse
 import csv
@@ -33,10 +33,21 @@ from dotenv import load_dotenv
 RACINE = Path(__file__).resolve().parent.parent
 load_dotenv(RACINE / ".env")
 
-# Les profils suivis : code ROME -> (libellé, groupe, coché par défaut sur la page).
+# Codes et libellés du référentiel ROME France Travail.
+# https://github.com/France-Travail/mobiville/blob/main/api/src/assets/datas/unix_referentiel_code_rome_v346_utf8.xml
+# Chaque profil reste distinct dans les filtres et les séries.
 METIERS = {
-    "D1401": ("Assistant(e) commercial(e)", "Assistant commercial", True),
-    "D1402": ("Responsable commercial(e) grands comptes / business developer", "Développement commercial", True),
+    "D1213": ("Vente en gros de matériel et équipement", "Vente B2B spécialisée", True),
+    "D1401": ("Assistanat commercial", "Assistanat commercial", True),
+    "D1402": ("Relation commerciale grands comptes et entreprises", "Vente et relation commerciale", True),
+    "D1403": ("Relation commerciale auprès de particuliers", "Vente et relation commerciale", True),
+    "D1404": ("Relation commerciale en vente de véhicules", "Vente et relation commerciale", True),
+    "D1406": ("Management en force de vente", "Management commercial", True),
+    "D1407": ("Relation technico-commerciale", "Technico-commercial", True),
+    "D1408": ("Téléconseil et télévente", "Vente à distance", True),
+    "M1701": ("Administration des ventes", "Administration des ventes", True),
+    "M1704": ("Management relation clientèle", "Relation clientèle", True),
+    "M1707": ("Stratégie commerciale", "Stratégie commerciale", True),
 }
 
 
@@ -58,6 +69,8 @@ def fusionner_actives(existantes, nouvelles, codes_relances):
 
 TOKEN_URL = "https://entreprise.francetravail.fr/connexion/oauth2/access_token?realm=/partenaire"
 SEARCH_URL = "https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search"
+TAILLE_PAGE = 150
+MAX_PAR_ROME = 1150
 
 # Champs qui bougent sans que l'offre change : ignorés pour décider si une offre a été modifiée.
 CHAMPS_VOLATILS = {"dateActualisation"}
@@ -77,7 +90,7 @@ def obtenir_token():
     return r.json()["access_token"]
 
 
-def chercher(token, params, pas=150, maximum=1150):
+def chercher(token, params, pas=TAILLE_PAGE, maximum=MAX_PAR_ROME):
     """Pagine la recherche ; renvoie (liste d'offres, total annoncé par l'API dans Content-Range)."""
     offres, total, debut = [], None, 0
     while debut < maximum:

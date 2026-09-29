@@ -29,7 +29,7 @@ import requests
 
 RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE / "scripts"))
-from extraire import METIERS, code_rome  # noqa: E402  (la liste des métiers vit dans un seul fichier)
+from extraire import MAX_PAR_ROME, METIERS, code_rome  # noqa: E402  (la liste des métiers vit dans un seul fichier)
 
 # Les outils et compétences recherchés dans les annonces des métiers commerciaux.
 # Chaque entrée : libellé affiché -> variantes cherchées (mot entier, insensible à la casse).
@@ -95,6 +95,28 @@ NATURES = [
 
 # Niveau de formation demandé : du plus faible au plus élevé (l'ordre sert aussi à l'affichage).
 FORMATIONS = ["< Bac", "Bac", "Bac+2", "Bac+3/4", "Bac+5"]
+
+
+def metiers_resume(actives, extractions_du_jour):
+    """Ajoute les compteurs et l'état de collecte du jour à la taxonomie."""
+    par_code = {r["rome"]: r for r in extractions_du_jour}
+    resultat = []
+    for code, (libelle, groupe, coche) in METIERS.items():
+        extraction = par_code.get(code)
+        total = int(extraction["total"]) if extraction else None
+        recuperees = int(extraction["recuperees"]) if extraction else None
+        resultat.append({
+            "code": code,
+            "libelle": libelle,
+            "groupe": groupe,
+            "coche": coche,
+            "actives": sum(1 for rome in actives.values() if rome == code),
+            "collecte": extraction is not None,
+            "total_annonce": total,
+            "recuperees": recuperees,
+            "plafonnee": total > recuperees if extraction else None,
+        })
+    return resultat
 
 
 def niveau(intitule):
@@ -332,18 +354,27 @@ def main():
     geo.sauver()
 
     # Série : par jour et par métier
-    serie = defaultdict(dict)
+    serie = defaultdict(lambda: {"total": {}, "recuperees": {}})
+    extractions_du_jour = []
     with (RACINE / "data" / "serie.csv").open(encoding="utf-8") as f:
         for r in csv.DictReader(f):
-            serie[r["date"]][r["rome"]] = int(r["total"])
+            total = int(r["total"])
+            recuperees = int(r.get("recuperees") or 0)
+            serie[r["date"]]["total"][r["rome"]] = total
+            serie[r["date"]]["recuperees"][r["rome"]] = recuperees
+            if r["date"] == jour:
+                extractions_du_jour.append(r)
 
     resume = {
         "date": jour,
         "source": "France Travail — API Offres d'emploi v2",
-        "requete": "une requête codeROME par métier, France entière; offres actives dédoublonnées par identifiant",
-        "metiers": [{"code": c, "libelle": l, "groupe": g, "coche": k,
-                     "actives": sum(1 for code in actives.values() if code == c)}
-                    for c, (l, g, k) in METIERS.items()],
+        "requete": f"une requête codeROME par métier, France entière; jusqu'à {MAX_PAR_ROME:,} résultats par code; offres actives dédoublonnées par identifiant".replace(",", " "),
+        "limites_collecte": {
+            "resultats_max_par_code_rome": MAX_PAR_ROME,
+            "codes_plafonnes": sorted(r["rome"] for r in extractions_du_jour
+                                      if int(r["total"]) > int(r["recuperees"])),
+        },
+        "metiers": metiers_resume(actives, extractions_du_jour),
         "outils": list(OUTILS),
         "contrats": {c: contrat_libelle(c)
                      for c in sorted({o["contrat"] for o in offres if o["contrat"]})},
@@ -351,7 +382,9 @@ def main():
         "formations": FORMATIONS,
         "versions_conservees": nb_versions,
         "sans_position": sum(1 for o in offres if o["lat"] is None),
-        "serie": [{"date": d, "par_metier": m} for d, m in sorted(serie.items())],
+        "serie": [{"date": d, "par_metier": comptes["total"],
+                   "recuperees_par_metier": comptes["recuperees"]}
+                  for d, comptes in sorted(serie.items())],
         "offres": offres,
     }
     sortie = RACINE / "data" / "resume.json"
