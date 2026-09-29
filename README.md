@@ -1,135 +1,46 @@
-# Le marché de mon métier — les métiers du marketing
+# Assistant commercial — le marché de l'emploi, lu dans les offres
 
-### 👉 **[Voir le site : vincentfavarin.github.io/metier](https://vincentfavarin.github.io/metier/)**
+Site statique en français consacré au métier d'assistant commercial. Il observe les offres France Travail du code ROME **D1401 — Assistanat commercial** et présente leur répartition géographique, les salaires affichés, les compétences mentionnées, les recruteurs et l'évolution des extractions.
 
-Le site est mis à jour chaque matin par une Action GitHub : elle interroge
-l'API France Travail, enregistre les offres du jour et publie les chiffres.
+## Pages
 
-| | |
+| Page | Ce qu'elle présente |
 |---|---|
-| [Accueil](https://vincentfavarin.github.io/metier/) | les filtres, les chiffres, la carte de France |
-| [Ce que ça paie](https://vincentfavarin.github.io/metier/salaires.html) | fourchettes par niveau, métier, contrat, territoire |
-| [Ce qu'on vous demande](https://vincentfavarin.github.io/metier/exigences.html) | expérience, diplôme, outils, compétences |
-| [Qui recrute](https://vincentfavarin.github.io/metier/recruteurs.html) | entreprises, secteurs, employeurs ouverts aux débutants |
-| [Le marché bouge](https://vincentfavarin.github.io/metier/mouvement.html) | les extractions successives, la fraîcheur des annonces |
+| `index.html` | Filtres, indicateurs, carte, départements et contrats |
+| `salaires.html` | Salaires bruts annoncés et estimation du net |
+| `exigences.html` | Expérience, formation, outils et compétences |
+| `recruteurs.html` | Employeurs, secteurs et dernières offres |
+| `mouvement.html` | Historique des extractions et limites des chiffres |
 
-Dossier de travail pour la séance « Écouter le marché de votre métier »
-(M2 MOD, IAE Clermont Auvergne). Dépôt de démonstration : il montre ce que
-l'on attend d'un dossier `avenir`, étape par étape, et la chaîne complète
-API → données → Action planifiée → page GitHub Pages.
+## Actualisation quotidienne
 
-## Le métier, tel que le marché le nomme
+La source existe déjà : l'API officielle **France Travail — Offres d'emploi v2**. `scripts/extraire.py` interroge l'API avec le code ROME configuré dans `METIERS`, conserve les versions des annonces et écrit les offres actives et la série historique. `scripts/resumer.py` produit `data/resume.json`, consommé par les cinq pages HTML. Le workflow `.github/workflows/veille.yml` est planifié chaque jour à 05:00 UTC (07:00 à Paris en été, 06:00 en hiver) et peut également être lancé manuellement.
 
-- **Intitulé principal** : chargé / chargée de marketing digital
-- **Variantes rencontrées dans les offres** : chef de projet marketing digital,
-  chef de produit digital, traffic manager, CRM manager, chargé d'acquisition
-- **Code ROME** : **M1718** — Chargé / Chargée de marketing digital
-  (le README disait M1705 « Marketing » ; c'est la première extraction qui a
-  donné le bon code : 14 offres sur 22 étaient en M1718)
+Pour activer la collecte sur GitHub :
 
-## Les questions que je pose à ce marché
+1. Dans les paramètres du dépôt, ajoutez les secrets Actions `FT_CLIENT_ID` et `FT_CLIENT_SECRET` obtenus pour l'API France Travail.
+2. Activez GitHub Pages si le site doit être publié.
+3. Lancez **Actions → veille → Run workflow** pour produire le premier résumé D1401 sans attendre la prochaine exécution planifiée.
 
-1. Combien d'offres, et où : Clermont / Puy-de-Dôme, Auvergne-Rhône-Alpes,
-   France, télétravail ?
-2. Quels contrats et quels salaires affichés ?
-3. Quels outils et compétences reviennent le plus — et lesquels la formation
-   ne me donnera pas ?
-4. Quelles entreprises publient le plus cet intitulé ?
+Les identifiants restent côté serveur dans les secrets GitHub Actions. Ils ne doivent jamais être placés dans une page HTML, un fichier de données publié ou un commit. En local, copiez `.env.example` vers `.env` et renseignez les mêmes variables; `.env` est ignoré par Git.
 
-## Ce que la première journée a appris (22/09/2026)
+Si le résumé déployé ne contient pas encore le code D1401, le site masque volontairement les anciennes statistiques d'un autre périmètre et affiche les étapes pour lancer la collecte. Il ne remplace pas les données absentes par des chiffres d'exemple.
 
-Trois requêtes, même jour, même API :
+## Développement local
 
-| Requête | Offres | Lecture |
-|---|---|---|
-| `motsCles = "chef de projet marketing digital"` | 22 | trop étroit, et du bruit (PMO, communication) |
-| `codeROME = M1718` | 113 | le référentiel : homogène, c'est la requête de la veille |
-| `motsCles = "marketing digital"` | 424 | large, mais 191 annonces identiques d'un même réseau (M1716) : à dédoublonner avant de compter |
-
-Sur M1718 : 0 offre dans le 63, 11 en Auvergne-Rhône-Alpes, Paris et
-Hauts-de-Seine en tête ; 27 % des offres affichent un salaire, médiane
-31 000 → 35 700 € annuels ; réseaux sociaux, anglais, SEO/SEA, GA4 et
-« IA » reviennent le plus.
-
-## Les métiers suivis
-
-23 codes ROME, choisis pour le M2 MOD parmi les 1 911 du référentiel France
-Travail (la liste vit dans `scripts/extraire.py`, `METIERS`) : le cœur
-marketing (M1718 chargé de marketing digital, M1716, M1705, M1703, M1620,
-M1706, M1430, M1711), le digital (E1113 e-commerce, D1438, E1101 community
-manager, E1124, E1405 SEO, M1886, M1426, M1719 et E1406 influence — 0 offre
-aujourd'hui, on surveille) et, décochés par défaut, la frontière avec la
-communication et le commerce (E1112, E1103, E1107, E1404, D1506, D1415 CRM).
-Au 22/09/2026 : 3 362 offres actives.
-
-## La chaîne
-
-```
-API France Travail  →  scripts/extraire.py  →  data/brut/<mois>/<ROME>.jsonl   chaque version d'annonce, une seule fois
-                                            →  data/actives/<date>.csv         les offres actives du jour (rome, id)
-                                            →  data/serie.csv                  par jour et par métier : total, nouvelles, modifiées
-                       scripts/resumer.py   →  data/resume.json                ce que les pages affichent (+ data/geo/, cache des positions)
-                       index.html + 4 pages →  https://vincentfavarin.github.io/metier/
-                       .github/workflows/veille.yml : GitHub relance tout ça chaque matin à 7 h
-```
-
-- `scripts/extraire.py` — une requête `codeROME` par métier (token OAuth,
-  pagination 150 / 1 150, total lu dans `Content-Range`). Le **brut est
-  conservé intégralement** : une offre est écrite la première fois qu'on la
-  voit, et de nouveau si son contenu change (empreinte SHA-1 du JSON, hors
-  `dateActualisation`) — l'évolution d'une annonce est donc gardée, version
-  par version. Relancer le même jour n'écrit rien deux fois.
-- `scripts/resumer.py` — retravaille le brut des offres actives : salaires
-  (libellé texte → min/max annuels bruts), outils cités dans les descriptions
-  (grille à adapter), position (lat/lon de l'API, sinon centre de la commune
-  via geo.api.gouv.fr, sinon ville principale du département).
-- Cinq pages HTML statiques, un chantier par page, toutes servies telles quelles.
-  Chacune charge `data/resume.json` et recalcule ses graphiques Chart.js dans le
-  navigateur selon la sélection ; net mensuel estimé = brut × 0,78 / 12.
-  - `index.html` — les filtres, les chiffres-clés, la carte Leaflet (survol =
-    l'offre, clic = l'annonce sur France Travail), les départements, les
-    contrats, et les liens vers les quatre autres pages.
-  - `salaires.html` — ce que ça paie. `exigences.html` — ce qu'on vous demande.
-    `recruteurs.html` — qui recrute. `mouvement.html` — le marché bouge, et les
-    limites de ces chiffres (ancre `#limites`, liée depuis chaque pied de page).
-- `assets/commun.js` et `assets/commun.css` — ce que les cinq pages partagent :
-  chargement des données, panneau de filtres (mémorisé dans `localStorage`,
-  replié ailleurs que sur l'accueil), barre de navigation, utilitaires et
-  fabriques de graphiques. Une page ne contient que son HTML et son petit
-  script `rendre(offres, D)`.
-
-## Volume et limites GitHub
-
-Jour 1 : 13 Mo de brut ; ensuite seulement le flux (nouvelles et modifiées),
-de l'ordre de 2 à 3 Mo par jour, soit ~1 Go par an. GitHub gratuit : dépôt
-1 Go recommandé, fichier ≤ 100 Mo, Pages 1 Go publié et 100 Go/mois de bande
-passante, Actions illimitées sur un dépôt public. Quand le brut dépassera
-quelques centaines de Mo, l'Action archivera chaque mois écoulé (compressé)
-dans les Releases du dépôt ou sur Hugging Face Datasets, et le dépôt ne
-gardera que les derniers mois.
-
-## Faire tourner chez soi
-
-```
+```powershell
 py -3.12 -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.txt
-copy .env.example .env        (puis remplir avec ses identifiants francetravail.io)
+Copy-Item .env.example .env
+# Renseigner FT_CLIENT_ID et FT_CLIENT_SECRET dans .env
 .venv\Scripts\python.exe scripts\extraire.py --verifier
 .venv\Scripts\python.exe scripts\extraire.py
 .venv\Scripts\python.exe scripts\resumer.py
-.venv\Scripts\python.exe -m http.server 8125      (puis http://localhost:8125)
+.venv\Scripts\python.exe -m http.server 8125
 ```
 
-## Faire tourner sans soi (GitHub)
+Ouvrez ensuite `http://localhost:8125`. Le périmètre ROME et son libellé se configurent dans `scripts/extraire.py` (`METIERS`); la grille de compétences/mots-clés est dans `scripts/resumer.py` (`OUTILS`).
 
-1. Dépôt **public** (GitHub Pages gratuit ne fonctionne que sur un dépôt public).
-2. Settings → Secrets and variables → Actions : `FT_CLIENT_ID` et `FT_CLIENT_SECRET`.
-3. Settings → Pages → Source « Deploy from a branch », branche `main`, dossier `/ (root)`.
-4. Actions → veille → Run workflow : le premier commit du bot arrive dans `data/`.
+## Interpréter les chiffres
 
-## Règles
-
-- Les identifiants sont dans `.env` (local) ou dans les secrets du dépôt
-  (GitHub) : jamais dans un fichier versionné.
-- Un canal, une requête, une date : chaque chiffre du site les affiche.
-- Pas de scraping de LinkedIn, APEC ou Indeed (interdit par leurs CGU).
+La veille couvre le seul canal France Travail et la requête ROME D1401; elle ne représente pas toutes les offres ni tous les intitulés possibles du métier. Les compétences sont repérées par une grille de mots-clés configurable, les salaires ne sont analysés que lorsqu'ils sont explicitement indiqués et leur estimation nette est indicative (brut annuel × 0,78 / 12, avant impôt). Les coordonnées approximatives au centre d'une commune ou d'un département ne donnent pas l'adresse de l'employeur.

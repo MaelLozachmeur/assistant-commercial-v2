@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Le marché bouge — les métiers du marketing</title>
+<title>Évolution du marché — assistant commercial</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <link rel="stylesheet" href="assets/commun.css?v=3">
 </head>
@@ -23,31 +23,36 @@
   </div>
 
   <h2 id="limites">Ce que ces chiffres n'autorisent pas à conclure</h2>
-  <p class="note">Un seul canal : France Travail n'héberge pas toutes les offres cadres (APEC, LinkedIn, Welcome to the Jungle en publient d'autres).
+  <p class="note">Un seul canal : les chiffres reflètent les offres France Travail, pas l'ensemble des recrutements publiés sur d'autres plateformes ou directement par les entreprises.
   Les salaires sont ceux des offres qui les affichent, moins d'un tiers : biais probable vers le bas et vers les PME ; le net mensuel est une estimation (brut × 0,78 / 12, avant impôt sur le revenu).
   Le niveau de poste (assistant·e, chargé·e, responsable, directeur·rice) est déduit de l'intitulé de l'annonce : c'est une approximation, un « chef de projet » n'encadre pas toujours.
   La formation et la qualification ne sont renseignées que par une minorité d'annonces : les pourcentages qui s'y rapportent portent sur ce petit sous-ensemble, pas sur tout le marché.
   Les agences d'intérim et de recrutement sont surreprésentées parmi les employeurs et les secteurs : elles publient beaucoup, parfois la même offre plusieurs fois.
-  Un seul annonceur peut fausser une colonne entière : à la dernière extraction, près de 200 des 271 annonces classées « directeur·rice » venaient d'un même réseau de franchise, au texte identique — ce ne sont pas 271 postes de direction à pourvoir. Le filtre « Indépendant » permet de les mettre de côté.
-  Une mention « IA » dans une annonce n'est pas une compétence exigée : il faut lire dix annonces pour dire ce que le mot recouvre.
-  La grille d'outils est la nôtre, elle est dans <code>scripts/resumer.py</code>. Un point placé au centre d'une commune ou d'un département n'est pas l'adresse de l'employeur.</p>
+  Plusieurs offres peuvent être publiées par un même employeur ou une agence : un volume d'annonces n'est pas un nombre garanti de postes distincts.
+  Une compétence citée dans une annonce n'est pas nécessairement exigée. La grille de mots-clés est indicative et configurable dans <code>scripts/resumer.py</code>.
+  Un point placé au centre d'une commune ou d'un département n'est pas l'adresse de l'employeur.</p>
 
   <footer id="pied"></footer>
 </main>
 
-<script src="assets/commun.js?v=3"></script>
+<script src="assets/commun.js?v=5"></script>
 <script>
 /* ============ Le marché bouge ============ */
 function rendre(offres, D) {
   const f = Commun.f;
 
-  const serie = (D.serie || []).map(j => ({ date: j.date, total: [...f.metiers].reduce((s, c) => s + ((j.par_metier && j.par_metier[c]) || 0), 0) }));
+  // Ne pas transformer en zéros les jours où ce ROME n'était pas encore collecté.
+  const serie = f.metiers.size ? (D.serie || [])
+    .filter(j => [...f.metiers].every(c => j.par_metier && Object.prototype.hasOwnProperty.call(j.par_metier, c)))
+    .map(j => ({ date: j.date, total: [...f.metiers].reduce((s, c) => s + j.par_metier[c], 0) })) : [];
   dessiner("g-serie", "line",
     { labels: serie.map(x => dateFr(x.date, true)), datasets: [{ data: serie.map(x => x.total), borderColor: couleur, backgroundColor: pale, fill: true, tension: .2, pointRadius: 4 }] },
     { scales: { y: { beginAtZero: true } } });
-  document.getElementById("note-serie").textContent = serie.length < 2
-    ? "Une seule extraction pour l'instant : la tendance apparaîtra au fil des jours, l'Action GitHub relance la collecte chaque matin."
-    : `${serie.length} extractions, du ${dateFr(serie[0].date)} au ${dateFr(serie[serie.length - 1].date)}. Ce compte suit les métiers cochés, pas les autres filtres.`;
+  document.getElementById("note-serie").textContent = !f.metiers.size
+    ? "Cochez le profil assistant commercial pour afficher l'historique."
+    : serie.length < 2
+    ? "Une seule extraction pour l'instant : la tendance apparaîtra au fil des jours. L'Action GitHub relance la collecte chaque jour."
+    : `${serie.length} extractions, du ${dateFr(serie[0].date)} au ${dateFr(serie[serie.length - 1].date)}. Ce compte suit le profil sélectionné, pas les autres filtres.`;
 
   const FRAIS = [["Moins de 7 jours", j => j < 7], ["7 à 30 jours", j => j >= 7 && j < 30], ["1 à 3 mois", j => j >= 30 && j < 90], ["Plus de 3 mois", j => j >= 90]];
   const ages = offres.map(age).filter(j => j != null && j >= 0);

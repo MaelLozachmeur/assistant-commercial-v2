@@ -59,7 +59,7 @@ const dateFr = (s, bref = false) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(
 const age = o => { const jour = Date.parse(D.date), t = Date.parse(o.date); return (isFinite(jour) && isFinite(t)) ? (jour - t) / 86400000 : null; };
 
 const couleur = "#0a5cff", pale = "rgba(10,92,255,.25)";
-const COULEURS = { Marketing: "#0a5cff", Digital: "#ff6a00", Frontière: "#8e8e93" };
+const COULEURS = { "Assistant commercial": "#0a5cff" };
 // Palette des niveaux : du clair au foncé, assistant → directeur, « autre » en gris. Valable sur toute la page.
 const COUL_NIV = { assistant: "#a7c9ff", charge: "#5f9bf5", responsable: "#2a6ad4", directeur: "#123a7a", autre: "#b4b4bc" };
 // Sur ces trois teintes claires, le texte blanc n'est pas lisible : on écrit en encre foncée.
@@ -229,7 +229,7 @@ const PAGE_ICI = (location.pathname.split("/").pop() || "index.html");
 const HTML_FILTRES = `
   <div class="filtres">
     <div>
-      <h3>Les métiers</h3>
+      <h3>Le métier suivi</h3>
       <div class="metiers" id="metiers"></div>
       <div class="boutons">
         <button data-groupe="tous">Tout cocher</button>
@@ -244,7 +244,7 @@ const HTML_FILTRES = `
     <div>
       <h3>Niveau de poste</h3>
       <div class="cases" id="f-niveaux"></div>
-      <p class="note" style="margin:8px 0 0">Déduit de l'intitulé de l'annonce. Ces couleurs servent de repère dans toute la page.</p>
+      <p class="note" style="margin:8px 0 0">Niveau de poste déduit de l'intitulé. Ces couleurs servent de repère dans toute la page.</p>
     </div>
   </div>
   <p class="compte" id="compte"></p>`;
@@ -254,7 +254,14 @@ function poserNavEtFiltres() {
   if (n) n.outerHTML = `<nav class="nav">` + PAGES.map(([url, lib]) =>
     `<a href="${url}"${url === PAGE_ICI ? ' class="ici" aria-current="page"' : ""}>${lib}</a>`).join("") + `</nav>`;
 
+  const etat = document.createElement("div");
+  etat.className = "vide";
+  etat.id = "etat-donnees";
+  etat.setAttribute("role", "status");
+  etat.hidden = true;
+
   const f = document.getElementById("filtres-ici");
+  if (f) f.before(etat);
   if (f) f.outerHTML = (PAGE_ICI === "index.html"
     // Accueil : le panneau est déplié, c'est le point de départ.
     ? `<div class="carte">${HTML_FILTRES}</div>`
@@ -266,8 +273,7 @@ function poserNavEtFiltres() {
   if (p) p.innerHTML =
     `<p style="margin:0 0 8px"><a href="mouvement.html#limites">Limites de ces chiffres</a></p>
      Chaîne : API France Travail → <code>scripts/extraire.py</code> → <code>data/brut/</code> (chaque version d'annonce, une seule fois) + <code>data/actives/</code> (les offres du jour) → <code>scripts/resumer.py</code> → <code>data/resume.json</code> → ces pages (GitHub Pages).
-     Une Action GitHub relance la collecte chaque matin à 7 h. Identifiants dans les secrets du dépôt, jamais dans le code.
-     Dépôt de démonstration — M2 MOD, IAE Clermont Auvergne, séminaires métiers.`;
+     L'Action GitHub « veille » lance la collecte chaque jour. Identifiants conservés dans les secrets GitHub Actions, jamais dans le navigateur.`;
 }
 
 /* ============================================================
@@ -310,9 +316,28 @@ const Commun = {
   demarrer(rendre, initier) {
     Commun.rendre = rendre;
     poserNavEtFiltres();
-    // GitHub Pages met le JSON en cache 10 minutes : on le redemande frais à chaque chargement.
-    fetch("data/resume.json", { cache: "no-cache" }).then(r => r.json()).then(d => {
+    const afficherRepli = message => {
+      const etat = document.getElementById("etat-donnees");
+      if (etat) {
+        etat.textContent = message;
+        etat.hidden = false;
+      }
+      document.querySelectorAll("main > :not(.nav):not(h1):not(#sous):not(#etat-donnees):not(footer):not(script)")
+        .forEach(element => { element.hidden = true; });
+    };
+    // Le JSON est produit quotidiennement par la collecte serveur; les identifiants API ne vont jamais au navigateur.
+    fetch("data/resume.json", { cache: "no-cache" }).then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    }).then(d => {
       if (!d.metiers || !d.offres) throw new Error("ancien format de resume.json — rechargez la page (Ctrl+F5)");
+      const cible = d.metiers.find(m => m.code === "D1401");
+      if (!cible || d.offres.some(o => o.rome !== "D1401")) {
+        afficherRepli("La veille est configurée pour le métier d'assistant commercial (ROME D1401), mais le dernier résumé disponible concerne un autre périmètre. Aucune ancienne statistique n'est affichée. La collecte France Travail est planifiée chaque jour; pour la lancer dès maintenant, renseignez FT_CLIENT_ID et FT_CLIENT_SECRET dans Settings > Secrets and variables > Actions, puis lancez le workflow « veille ». En local, configurez le fichier .env à partir de .env.example.");
+        const sous = document.getElementById("sous");
+        if (sous) sous.textContent = "Données assistant commercial en attente de la première extraction France Travail.";
+        return;
+      }
       D = d;
       Commun.D = d;
       Commun.lib = Object.fromEntries(d.metiers.map(m => [m.code, m]));
@@ -330,7 +355,8 @@ const Commun = {
 
       // --- Filtre métiers, par groupe ---
       const groupes = [...new Set(d.metiers.map(m => m.groupe))];
-      const memoM = memo && Array.isArray(memo.metiers) ? memo.metiers : null;
+      let memoM = memo && Array.isArray(memo.metiers) ? memo.metiers.filter(code => d.metiers.some(m => m.code === code)) : null;
+      if (memoM && memoM.length === 0 && memo.metiers.length > 0) memoM = null;
       document.getElementById("metiers").innerHTML = groupes.map(g => `<h4 style="color:${COULEURS[g] || ""}">${g}</h4>` +
         d.metiers.filter(m => m.groupe === g).map(m =>
           `<label><input type="checkbox" value="${m.code}" data-groupe="${m.groupe}" ${(memoM ? memoM.includes(m.code) : m.coche) ? "checked" : ""}> ${m.libelle} <small>${m.code} · ${m.actives}</small></label>`).join("")).join("");
@@ -366,6 +392,10 @@ const Commun = {
 
       if (initier) initier(d);
       Commun.rafraichir();
-    }).catch(e => { const s = document.getElementById("sous"); if (s) s.textContent = "Impossible de lire data/resume.json : " + e; });
+    }).catch(e => {
+      const sous = document.getElementById("sous");
+      if (sous) sous.textContent = "Impossible de lire data/resume.json.";
+      afficherRepli(`Impossible de charger le résumé des offres (${e}). Vérifiez la publication des données et les paramètres du workflow « veille ». Les secrets requis sont FT_CLIENT_ID et FT_CLIENT_SECRET dans GitHub Actions; ils ne doivent jamais être exposés dans le navigateur.`);
+    });
   },
 };

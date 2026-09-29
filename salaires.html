@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ce que ça paie — les métiers du marketing</title>
+<title>Salaire d'un assistant commercial — les offres</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <link rel="stylesheet" href="assets/commun.css?v=3">
 </head>
@@ -18,7 +18,7 @@
   <div class="phrase" id="phrase-salaire" style="margin-top:24px">—</div>
   <div class="grille" style="margin-top:16px">
     <div class="carte large"><h3>Selon le niveau de poste <small>— de la médiane des salaires minimum à celle des maximum</small></h3><div class="zone"><canvas id="g-paie-niveau"></canvas></div></div>
-    <div class="carte large"><h3>Selon le métier <small>— métiers cochés comptant au moins 8 offres avec salaire</small></h3><div class="zone haute"><canvas id="g-paie-metier"></canvas></div></div>
+    <div class="carte large"><h3>Selon le profil suivi <small>— uniquement les offres comptant au moins 8 salaires</small></h3><div class="zone haute"><canvas id="g-paie-metier"></canvas></div></div>
     <div class="carte"><h3>Selon le type de contrat</h3><div class="zone"><canvas id="g-paie-contrat"></canvas></div></div>
     <div class="carte"><h3>Selon le territoire — le Puy-de-Dôme, l'Île-de-France, le reste</h3><div class="zone"><canvas id="g-paie-idf"></canvas></div></div>
   </div>
@@ -27,7 +27,7 @@
   <footer id="pied"></footer>
 </main>
 
-<script src="assets/commun.js?v=3"></script>
+<script src="assets/commun.js?v=5"></script>
 <script>
 /* ============ Ce que ça paie ============ */
 function rendre(offres, D) {

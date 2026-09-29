@@ -3,7 +3,7 @@ r"""Récupère les offres France Travail des métiers suivis et les enregistre d
 Usage :
     .venv\Scripts\python.exe scripts\extraire.py                 # tous les métiers de METIERS
     .venv\Scripts\python.exe scripts\extraire.py --verifier      # teste seulement la connexion
-    .venv\Scripts\python.exe scripts\extraire.py --rome M1718    # un seul code, pour essayer
+    .venv\Scripts\python.exe scripts\extraire.py --rome D1401    # le profil suivi
 
 Ce que ça écrit :
     data/brut/<AAAA-MM>/<ROME>.jsonl   une ligne par offre complète (JSON tel que l'API le renvoie),
@@ -33,35 +33,9 @@ from dotenv import load_dotenv
 RACINE = Path(__file__).resolve().parent.parent
 load_dotenv(RACINE / ".env")
 
-# Les métiers suivis : code ROME -> (libellé, groupe, coché par défaut sur la page).
-# Choisis pour le M2 Marketing Opérationnel et Digital ; la page permet de cocher/décocher.
+# Le profil suivi : code ROME -> (libellé, groupe, coché par défaut sur la page).
 METIERS = {
-    # Cœur marketing
-    "M1718": ("Chargé(e) de marketing digital", "Marketing", True),
-    "M1716": ("Directeur(trice) marketing digital", "Marketing", True),
-    "M1705": ("Responsable marketing", "Marketing", True),
-    "M1703": ("Chef(fe) de produit", "Marketing", True),
-    "M1620": ("Assistant(e) marketing", "Marketing", True),
-    "M1706": ("Chef(fe) de promotion des ventes", "Marketing", True),
-    "M1430": ("Chargé(e) d'études commerciales", "Marketing", True),
-    "M1711": ("Directeur(trice) du marketing", "Marketing", True),
-    # Digital, contenu, e-commerce
-    "E1113": ("Responsable e-commerce", "Digital", True),
-    "D1438": ("Assistant(e) e-commerce", "Digital", True),
-    "E1101": ("Community manager", "Digital", True),
-    "E1124": ("Social media manager", "Digital", True),
-    "E1405": ("Référenceur(se) web (SEO)", "Digital", True),
-    "M1886": ("Chef(fe) de projet web", "Digital", True),
-    "M1426": ("Chief digital officer", "Digital", True),
-    "M1719": ("Chargé(e) des relations avec les influenceurs", "Digital", True),
-    "E1406": ("Influenceur(se) web", "Digital", True),
-    # Communication et commerce, à la frontière
-    "E1112": ("Chargé(e) de communication", "Frontière", False),
-    "E1103": ("Chargé(e) des relations publiques", "Frontière", False),
-    "E1107": ("Chef(fe) de projet événementiel", "Frontière", False),
-    "E1404": ("Assistant(e) en publicité", "Frontière", False),
-    "D1506": ("Chargé(e) de merchandising", "Frontière", False),
-    "D1415": ("Chargé(e) de relation client (CRM)", "Frontière", False),
+    "D1401": ("Assistant(e) commercial(e)", "Assistant commercial", True),
 }
 
 TOKEN_URL = "https://entreprise.francetravail.fr/connexion/oauth2/access_token?realm=/partenaire"

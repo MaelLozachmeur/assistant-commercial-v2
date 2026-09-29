@@ -31,27 +31,18 @@ RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE / "scripts"))
 from extraire import METIERS  # noqa: E402  (la liste des métiers vit dans un seul fichier)
 
-# Les outils et compétences que l'on cherche dans les annonces : c'est VOTRE grille, adaptez-la.
+# Les outils et compétences recherchés dans les annonces d'assistanat commercial.
 # Chaque entrée : libellé affiché -> variantes cherchées (mot entier, insensible à la casse).
 OUTILS = {
-    "SEO": ["seo", "référencement naturel"],
-    "SEA / Google Ads": ["sea", "google ads", "adwords"],
-    "Meta Ads": ["meta ads", "facebook ads", "instagram ads"],
-    "Google Analytics": ["google analytics", "ga4", "analytics"],
-    "HubSpot": ["hubspot"],
-    "CRM / Salesforce": ["crm", "salesforce"],
-    "Emailing": ["emailing", "e-mailing", "newsletter", "mailchimp", "brevo", "sendinblue"],
-    "Réseaux sociaux": ["réseaux sociaux", "social media", "community management"],
-    "LinkedIn": ["linkedin"],
-    "WordPress": ["wordpress"],
-    "Shopify / e-commerce": ["shopify", "prestashop", "e-commerce", "ecommerce"],
-    "Canva": ["canva"],
-    "Suite Adobe": ["photoshop", "illustrator", "indesign", "adobe"],
-    "Excel": ["excel"],
-    "Power BI / Looker": ["power bi", "looker", "data studio"],
-    "SQL / Python": ["sql", "python"],
-    "Marketing automation": ["automation", "automatisation", "zapier", "make", "n8n"],
-    "IA générative": ["ia", "intelligence artificielle", "chatgpt", "ia générative", "genai", "llm"],
+    "CRM": ["crm", "salesforce", "hubspot", "sellsy", "dynamics"],
+    "ERP / gestion commerciale": ["erp", "sap", "sage", "cegid", "ebp", "gestion commerciale"],
+    "Excel et bureautique": ["excel", "microsoft office", "word", "microsoft 365", "pack office"],
+    "Devis et facturation": ["devis", "facturation", "facture", "bon de commande"],
+    "Suivi des commandes": ["suivi des commandes", "suivi de commande", "commande client", "livraison"],
+    "Relation client": ["relation client", "service client", "satisfaction client", "fidélisation"],
+    "Prospection commerciale": ["prospection", "prospecter", "développement commercial"],
+    "Reporting et tableaux de bord": ["reporting", "tableau de bord", "power bi"],
+    "Communication écrite et orale": ["rédaction", "communication écrite", "accueil téléphonique", "courriel"],
     "Anglais": ["anglais", "english"],
 }
 REGEX_OUTILS = {nom: re.compile(r"(?<![\w-])(" + "|".join(re.escape(v) for v in variantes) + r")(?![\w-])")
@@ -59,8 +50,7 @@ REGEX_OUTILS = {nom: re.compile(r"(?<![\w-])(" + "|".join(re.escape(v) for v in 
 
 GEO = "https://geo.api.gouv.fr"
 
-# Niveau du poste, lu dans l'intitulé : l'ordre compte (un « directeur marketing » n'est pas
-# un « chargé »). Première expression qui correspond, en minuscules.
+# Niveau du poste, lu dans l'intitulé. Première expression qui correspond, en minuscules.
 NIVEAUX = [
     ("directeur", r"directeur|directrice|\bhead of\b|\bcdo\b|\bcmo\b|\bvp\b"),
     ("responsable", r"responsable|manager|\bchef|\bcheffe|\blead\b|\bhead\b"),
@@ -78,7 +68,7 @@ NIVEAUX_LIBELLES = [
     ["autre", "Autre"],
 ]
 
-# Codes de type de contrat de l'API -> libellé court lisible par un étudiant.
+# Codes de type de contrat de l'API -> libellé court lisible.
 CONTRATS = {
     "CDI": "CDI",
     "CDD": "CDD",
@@ -106,7 +96,7 @@ FORMATIONS = ["< Bac", "Bac", "Bac+2", "Bac+3/4", "Bac+5"]
 
 
 def niveau(intitule):
-    """'Directeur marketing' -> 'directeur' ; 'Chargé de com' -> 'charge' ; sinon 'autre'."""
+    """Classe le niveau à partir de l'intitulé ; sinon renvoie 'autre'."""
     t = intitule or ""
     for cle, rx in REGEX_NIVEAUX:
         if rx.search(t):
