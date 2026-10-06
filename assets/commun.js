@@ -1,7 +1,6 @@
 /* ============================================================
-   commun.js — ce que les cinq pages partagent.
-   Chargé par index.html, salaires.html, exigences.html,
-   recruteurs.html et mouvement.html, après Chart.js.
+   commun.js — ce que les pages partagent.
+   Chargé par toutes les pages, après Chart.js.
 
    Tout est déclaré au premier niveau : le petit script de chaque
    page peut donc appeler directement euro(), barres(), NIVEAUX…
@@ -233,6 +232,7 @@ const PAGES = [
   ["exigences.html", "Ce qu'on vous demande"],
   ["recruteurs.html", "Qui recrute"],
   ["mouvement.html", "Le marché bouge"],
+  ["comparaison.html", "Comparer les sources"],
 ];
 // Chemins relatifs partout : le site vit dans un sous-dossier (/metier/) sur GitHub Pages.
 const PAGE_ICI = (location.pathname.split("/").pop() || "index.html");
@@ -324,7 +324,7 @@ const Commun = {
 
   /* rendre(offres, D) : rappelée au chargement puis à chaque changement de filtre.
      initier(D) : facultatif, une seule fois, avant le premier rendu. */
-  demarrer(rendre, initier) {
+  demarrer(rendre, initier, options = {}) {
     Commun.rendre = rendre;
     poserNavEtFiltres();
     const afficherRepli = message => {
@@ -363,6 +363,12 @@ const Commun = {
           `${d.source} · ${d.requete} · extraction du ${dateFr(d.date)} · ${d.offres.length} offres actives, ${d.versions_conservees} versions conservées` +
           (plafond ? ` · maximum ${plafond.toLocaleString("fr-FR")} résultats par requête` : "") +
           avertissement;
+      }
+
+      if (options.sansFiltres) {
+        if (initier) initier(d);
+        Commun.rendre(d.offres, d);
+        return;
       }
 
       let memo = null;
