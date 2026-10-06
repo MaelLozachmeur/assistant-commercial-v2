@@ -126,7 +126,9 @@ def candidats_doublons(offres, seuil=0.75):
     return sorted(resultats, key=lambda candidate: (-candidate["score"], candidate["france_travail_id"]))
 
 
-def statistiques_comparatives(offres, statuts_sources, seuil=0.75):
+def statistiques_comparatives(
+    offres, statuts_sources, seuil=0.75, doublons_calculables=True,
+):
     """Calcule les indicateurs source par source, sans additionner les annonces."""
     par_source = defaultdict(list)
     for offre in offres:
@@ -164,12 +166,18 @@ def statistiques_comparatives(offres, statuts_sources, seuil=0.75):
     deux_sources_disponibles = all(
         sources[source]["statut"] == "disponible" for source in SOURCES
     )
-    candidats = candidats_doublons(offres, seuil) if deux_sources_disponibles else []
+    calculer_doublons = deux_sources_disponibles and doublons_calculables
+    candidats = candidats_doublons(offres, seuil) if calculer_doublons else []
     return {
         "sources": sources,
         "doublons": {
-            "statut": "calcule" if deux_sources_disponibles else "non_calculable",
-            "nombre_candidats": len(candidats) if deux_sources_disponibles else None,
+            "statut": "calcule" if calculer_doublons else "non_calculable",
+            "nombre_candidats": len(candidats) if calculer_doublons else None,
+            "raison": (
+                None if calculer_doublons else
+                "champs_rapprochement_absents" if deux_sources_disponibles
+                else "sources_non_disponibles"
+            ),
             "seuil": seuil,
             "candidats": candidats,
         },

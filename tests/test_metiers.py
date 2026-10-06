@@ -1,11 +1,13 @@
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from scripts.comparer import candidats_doublons, normaliser_offre, statistiques_comparatives
 from scripts.extraire import MAX_PAR_REQUETE, METIERS, code_rome, chercher, fusionner_actives
-from scripts.resumer import REGEX_OUTILS, contrat_libelle, contrats_resume, metiers_resume
+from scripts.extraire_wttj import collecter
+from scripts.resumer import REGEX_OUTILS, contrat_libelle, contrats_resume, lire_wttj, metiers_resume
 
 
 class MetiersTest(unittest.TestCase):
@@ -271,6 +273,129 @@ class MetiersTest(unittest.TestCase):
         self.assertIsNone(resume["doublons"]["nombre_candidats"])
         self.assertEqual(resume["doublons"]["candidats"], [])
 
+    def test_wttj_lit_le_tableau_pagine_et_filtre_sans_conserver_les_champs_inutiles(self):
+        premier_lot = [
+            {
+                "reference": "wk-1", "name": "Commercial B2B", "status": "published",
+                "profession_reference": "sales", "salary": {
+                    "min": "40000", "max": "50000", "currency": "EUR", "period": "yearly",
+                }, "description": "ne pas conserver",
+            },
+            {
+                "reference": "wk-2", "name": "Développeur logiciel", "status": "published",
+                "profession_reference": "software_engineer",
+            },
+        ]
+        second_lot = [{
+            "reference": "wk-3", "name": "Responsable commercial", "status": "published",
+            "profession_reference": "sales",
+        }]
+
+        class SessionFixture:
+            def __init__(self):
+                self.pages = []
+
+            def get(self, _url, **kwargs):
+                self.pages.append(kwargs)
+                page = kwargs["params"].get("page")
+                body = (
+                    premier_lot if page in (None, 1)
+                    else second_lot if page == 2
+                    else []
+                )
+                return type("Response", (), {
+                    "status_code": 200,
+                    "json": lambda self: body,
+                })()
+
+        session = SessionFixture()
+        with patch("scripts.extraire_wttj.PER_PAGE", 2), patch.dict(
+            "os.environ", {"WTTJ_API_KEY": "fixture-secret"},
+        ):
+            offres, pages = collecter(session)
+
+        self.assertEqual(pages, 3)
+        self.assertEqual([offre["id"] for offre in offres], ["wk-1", "wk-3"])
+        self.assertEqual(offres[0]["salary_min"], 40000)
+        self.assertEqual(offres[0]["salary_max"], 50000)
+        self.assertEqual(offres[0]["company"], "")
+        self.assertEqual(offres[0]["location"], "")
+        self.assertEqual(set(offres[0]), {
+            "id", "title", "company", "location", "salary_min", "salary_max",
+            "skills", "tasks",
+        })
+        self.assertTrue(all(
+            call["headers"]["Authorization"] == "Bearer fixture-secret"
+            for call in session.pages
+        ))
+        self.assertEqual(
+            [call["params"].get("page") for call in session.pages],
+            [None, 1, 2],
+        )
+
+    def test_wttj_erreurs_auth_et_reponse_inattendue_sont_explicites(self):
+        class SessionFixture:
+            def __init__(self, status, body):
+                self.status, self.body = status, body
+
+            def get(self, *_args, **_kwargs):
+                body = self.body
+                return type("Response", (), {
+                    "status_code": self.status,
+                    "json": lambda _self: body,
+                })()
+
+        with patch.dict("os.environ", {"WTTJ_API_KEY": "fixture-secret"}):
+            with self.assertRaisesRegex(RuntimeError, "HTTP 401"):
+                collecter(SessionFixture(401, {}))
+            with self.assertRaisesRegex(RuntimeError, "HTTP 403"):
+                collecter(SessionFixture(403, {}))
+            with self.assertRaisesRegex(RuntimeError, "tableau JSON"):
+                collecter(SessionFixture(200, {"jobs": []}))
+
+    def test_wttj_disponible_ne_rend_pas_les_doublons_calculables_sans_ancre(self):
+        ft = normaliser_offre("france_travail", {
+            "id": "ft-1", "title": "Commercial B2B", "company": "Acme Conseil",
+            "location": "Paris",
+        })
+        wttj = normaliser_offre("wttj", {
+            "id": "wk-1", "title": "Commercial B2B",
+            "company": "", "location": "",
+        })
+        resume = statistiques_comparatives(
+            [ft, wttj],
+            {"france_travail": "disponible", "wttj": "disponible"},
+            doublons_calculables=False,
+        )
+
+        self.assertEqual(resume["sources"]["wttj"]["nombre_offres"], 1)
+        self.assertEqual(resume["doublons"]["statut"], "non_calculable")
+        self.assertEqual(resume["doublons"]["raison"], "champs_rapprochement_absents")
+        self.assertIsNone(resume["doublons"]["nombre_candidats"])
+
+    def test_resume_lit_le_fichier_wttj_temporaire_et_valide_son_schema(self):
+        with TemporaryDirectory() as dossier:
+            chemin = Path(dossier) / "wttj.json"
+            chemin.write_text(
+                '{"status":"disponible","offers":[{"id":"wk-1","title":"Sales",'
+                '"company":"","location":"","salary_min":null,"salary_max":null,'
+                '"skills":[],"tasks":[]}]}',
+                encoding="utf-8",
+            )
+            with patch.dict("os.environ", {"WTTJ_OUTPUT": str(chemin)}):
+                offres, statut, portee = lire_wttj()
+
+            self.assertEqual([offre["id"] for offre in offres], ["wk-1"])
+            self.assertEqual(statut, "disponible")
+            self.assertEqual(portee, "partenariat_toutes_organisations")
+
+            chemin.write_text('{"status":"non_configure","offers":[]}', encoding="utf-8")
+            with patch.dict("os.environ", {"WTTJ_OUTPUT": str(chemin)}):
+                offres, statut, portee = lire_wttj()
+            self.assertEqual(offres, [])
+            self.assertEqual(statut, "non_connecte")
+            self.assertEqual(portee, "non_configure")
+
     def test_etats_vides_distinguent_zero_reel_et_source_non_connectee(self):
         resume = statistiques_comparatives([], {
             "france_travail": "disponible",
@@ -294,6 +419,11 @@ class MetiersTest(unittest.TestCase):
         self.assertIn("Non calculable tant que les deux sources", page)
         self.assertIn("aucune offre ni statistique WTTJ n'est inventée", page)
         self.assertNotIn("api.welcometothejungle.com/", page)
+        self.assertNotIn("www.welcomekit.co/api/v1/external/jobs/all", page)
+        adaptateur = (Path(__file__).resolve().parent.parent / "scripts" / "extraire_wttj.py").read_text(encoding="utf-8")
+        self.assertIn("https://www.welcomekit.co/api/v1/external/jobs/all", adaptateur)
+        workflow = (Path(__file__).resolve().parent.parent / ".github" / "workflows" / "veille.yml").read_text(encoding="utf-8")
+        self.assertIn("WTTJ_API_KEY: ${{ secrets.WTTJ_API_KEY }}", workflow)
         source = (Path(__file__).resolve().parent.parent / "assets" / "commun.js").read_text(encoding="utf-8")
         self.assertIn("options.sansFiltres", source)
         self.assertIn("{ sansFiltres: true }", page)
