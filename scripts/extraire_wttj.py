@@ -124,7 +124,7 @@ def collecter(session=None):
             offre = normaliser_job(job, f"{pages}:{index}")
             if offre:
                 references[offre["id"]] = offre
-        if len(lot) < PER_PAGE:
+        if not lot:
             break
         page = 1 if page is None else page + 1
     return list(references.values()), pages

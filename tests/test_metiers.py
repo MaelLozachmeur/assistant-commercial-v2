@@ -314,7 +314,7 @@ class MetiersTest(unittest.TestCase):
         ):
             offres, pages = collecter(session)
 
-        self.assertEqual(pages, 3)
+        self.assertEqual(pages, 4)
         self.assertEqual([offre["id"] for offre in offres], ["wk-1", "wk-3"])
         self.assertEqual(offres[0]["salary_min"], 40000)
         self.assertEqual(offres[0]["salary_max"], 50000)
@@ -330,7 +330,7 @@ class MetiersTest(unittest.TestCase):
         ))
         self.assertEqual(
             [call["params"].get("page") for call in session.pages],
-            [None, 1, 2],
+            [None, 1, 2, 3],
         )
 
     def test_wttj_erreurs_auth_et_reponse_inattendue_sont_explicites(self):
