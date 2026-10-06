@@ -14,7 +14,8 @@ Ce que ça écrit :
 
 Les identifiants sont lus dans le fichier .env (voir .env.example) ou dans l'environnement
 (secrets GitHub Actions). API : https://francetravail.io/data/api/offres-emploi —
-150 offres par appel, 1 150 par code ROME, total réel dans l'en-tête Content-Range.
+150 offres par appel, jusqu'à 3 150 résultats par recherche (range 0-3149); les recherches plus
+denses sont subdivisées par dates de création (minCreationDate/maxCreationDate) jusqu'à la seconde.
 """
 import argparse
 import csv
@@ -24,7 +25,7 @@ import os
 import re
 import sys
 import time
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import requests
@@ -70,7 +71,9 @@ def fusionner_actives(existantes, nouvelles, codes_relances):
 TOKEN_URL = "https://entreprise.francetravail.fr/connexion/oauth2/access_token?realm=/partenaire"
 SEARCH_URL = "https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search"
 TAILLE_PAGE = 150
-MAX_PAR_ROME = 1150
+MAX_PAR_REQUETE = 3150
+PAUSE_API = 0.34
+DATE_CREATION_MIN = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 # Champs qui bougent sans que l'offre change : ignorés pour décider si une offre a été modifiée.
 CHAMPS_VOLATILS = {"dateActualisation"}
@@ -90,27 +93,64 @@ def obtenir_token():
     return r.json()["access_token"]
 
 
-def chercher(token, params, pas=TAILLE_PAGE, maximum=MAX_PAR_ROME):
-    """Pagine la recherche ; renvoie (liste d'offres, total annoncé par l'API dans Content-Range)."""
+def _chercher_segment(token, params, pas=TAILLE_PAGE, maximum=MAX_PAR_REQUETE, forcer=False):
+    """Pagine une requête, sans dépasser le plafond même pour un segment insoluble."""
     offres, total, debut = [], None, 0
     while debut < maximum:
         fin = min(debut + pas - 1, maximum - 1)
+        time.sleep(PAUSE_API)
         r = requests.get(SEARCH_URL, params=dict(params, range=f"{debut}-{fin}"),
                          headers={"Authorization": f"Bearer {token}"}, timeout=30)
         if r.status_code == 204:                     # aucune offre
+            total = 0
             break
         if r.status_code not in (200, 206):
             raise RuntimeError(f"{r.status_code} : {r.text[:200]}")
-        m = re.search(r"/(\d+)", r.headers.get("Content-Range", ""))   # ex. "offres 0-149/1234"
-        if m:
-            total = int(m.group(1))
+        m = re.search(r"/(\d+)", r.headers.get("Content-Range", ""))
+        if not m:
+            raise RuntimeError("En-tête Content-Range absent : impossible de contrôler le total d'offres.")
+        total = int(m.group(1))
         lot = r.json().get("resultats", [])
-        offres.extend(lot)
+        offres.extend(lot[:maximum - len(offres)])
+        if total > maximum and not forcer:
+            break
         if len(lot) < pas or (total is not None and len(offres) >= total):
             break
         debut += pas
-        time.sleep(0.3)                              # on reste poli avec l'API
     return offres, total
+
+
+def _collecter_intervalle(token, params, debut, fin, pas, maximum):
+    """Subdivise un intervalle de création jusqu'à ce que chaque requête soit sous le plafond."""
+    bornes = dict(
+        params,
+        minCreationDate=datetime.fromtimestamp(debut, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        maxCreationDate=datetime.fromtimestamp(fin, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    )
+    premier_lot, total = _chercher_segment(token, bornes, pas, maximum)
+    if total > maximum and debut < fin:
+        milieu = (debut + fin) // 2
+        gauche, _, plafonds_gauche = _collecter_intervalle(
+            token, params, debut, milieu, pas, maximum,
+        )
+        droite, _, plafonds_droite = _collecter_intervalle(
+            token, params, milieu + 1, fin, pas, maximum,
+        )
+        return gauche + droite, total, plafonds_gauche + plafonds_droite
+    if total > maximum:
+        premier_lot, _ = _chercher_segment(token, bornes, pas, maximum, forcer=True)
+    return premier_lot, total, int(total > maximum)
+
+
+def chercher(token, params, pas=TAILLE_PAGE, maximum=MAX_PAR_REQUETE):
+    """Renvoie les offres dédoublonnées, le total initial et les segments encore plafonnés."""
+    debut = int(DATE_CREATION_MIN.timestamp())
+    fin = int(datetime.now(timezone.utc).replace(microsecond=0).timestamp())
+    offres, total, segments_plafonnes = _collecter_intervalle(
+        token, params, debut, fin, pas, maximum,
+    )
+    par_id = {offre["id"]: offre for offre in offres}
+    return list(par_id.values()), total, segments_plafonnes
 
 
 def empreinte(offre):
@@ -154,7 +194,7 @@ def main():
 
     actives, lignes_serie = [], []
     for code in codes:
-        offres, total = chercher(token, {"codeROME": code})
+        offres, total, segments_plafonnes = chercher(token, {"codeROME": code})
         nouvelles = modifiees = 0
         with (RACINE / "data" / "brut" / mois / f"{code}.jsonl").open("a", encoding="utf-8") as brut:
             for o in offres:
@@ -170,8 +210,8 @@ def main():
                     brut.write(json.dumps({"id": o["id"], "empreinte": e, "vu_le": aujourdhui,
                                            "rome": rome, "offre": o}, ensure_ascii=False) + "\n")
                 actives.append((rome, o["id"], (o.get("dateActualisation") or "")[:10]))
-        lignes_serie.append([aujourdhui, code, total if total is not None else len(offres),
-                             len(offres), nouvelles, modifiees])
+        lignes_serie.append([aujourdhui, code, total, len(offres), nouvelles, modifiees,
+                             segments_plafonnes])
         print(f"{code}  {METIERS[code][0]:<48} {len(offres):5d} offres, {nouvelles:4d} nouvelles, {modifiees:3d} modifiées")
         time.sleep(0.5)
 
@@ -196,7 +236,8 @@ def main():
     lignes = [r for r in lignes if not (r[0] == aujourdhui and r[1] in codes)] + lignes_serie
     with serie.open("w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["date", "rome", "total", "recuperees", "nouvelles", "modifiees"])
+        w.writerow(["date", "rome", "total", "recuperees", "nouvelles", "modifiees",
+                    "segments_plafonnes"])
         w.writerows(sorted(lignes))
 
     print(f"\n{aujourdhui} : {len(actives)} offres actives sur {len(codes)} métiers — "

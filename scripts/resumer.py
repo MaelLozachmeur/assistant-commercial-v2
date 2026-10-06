@@ -29,7 +29,7 @@ import requests
 
 RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE / "scripts"))
-from extraire import MAX_PAR_ROME, METIERS, code_rome  # noqa: E402  (la liste des métiers vit dans un seul fichier)
+from extraire import MAX_PAR_REQUETE, METIERS, code_rome  # noqa: E402  (la liste des métiers vit dans un seul fichier)
 
 # Les outils et compétences recherchés dans les annonces des métiers commerciaux.
 # Chaque entrée : libellé affiché -> variantes cherchées (mot entier, insensible à la casse).
@@ -84,6 +84,7 @@ CONTRATS = {
     "TTI": "Intérim",
     "CDS": "CDD senior",
     "REP": "Reprise d'entreprise",
+    "STG": "Stage",
 }
 
 NATURES = [
@@ -115,6 +116,9 @@ def metiers_resume(actives, extractions_du_jour):
             "total_annonce": total,
             "recuperees": recuperees,
             "plafonnee": total > recuperees if extraction else None,
+            "partitionnement_applique": bool(
+                extraction and extraction.get("segments_plafonnes") is not None
+            ),
         })
     return resultat
 
@@ -131,6 +135,12 @@ def niveau(intitule):
 def contrat_libelle(code):
     """Code de contrat de l'API -> libellé court ; les codes inconnus restent identifiables."""
     return CONTRATS.get(code) or f"Autre ({code})"
+
+
+def contrats_resume(offres):
+    """Inclut les contrats connus même si aucune offre du jour ne les utilise."""
+    observes = {o["contrat"] for o in offres if o.get("contrat")}
+    return {**CONTRATS, **{code: contrat_libelle(code) for code in observes}}
 
 
 def nature(o):
@@ -354,7 +364,7 @@ def main():
     geo.sauver()
 
     # Série : par jour et par métier
-    serie = defaultdict(lambda: {"total": {}, "recuperees": {}})
+    serie = defaultdict(lambda: {"total": {}, "recuperees": {}, "segments_plafonnes": {}})
     extractions_du_jour = []
     with (RACINE / "data" / "serie.csv").open(encoding="utf-8") as f:
         for r in csv.DictReader(f):
@@ -362,28 +372,35 @@ def main():
             recuperees = int(r.get("recuperees") or 0)
             serie[r["date"]]["total"][r["rome"]] = total
             serie[r["date"]]["recuperees"][r["rome"]] = recuperees
+            if r.get("segments_plafonnes") not in (None, ""):
+                serie[r["date"]]["segments_plafonnes"][r["rome"]] = int(r["segments_plafonnes"])
             if r["date"] == jour:
                 extractions_du_jour.append(r)
 
     resume = {
         "date": jour,
         "source": "France Travail — API Offres d'emploi v2",
-        "requete": f"une requête codeROME par métier, France entière; jusqu'à {MAX_PAR_ROME:,} résultats par code; offres actives dédoublonnées par identifiant".replace(",", " "),
+        "requete": f"recherche codeROME France entière, subdivisée par date de création si nécessaire; jusqu'à {MAX_PAR_REQUETE:,} résultats par requête; offres dédoublonnées par identifiant",
         "limites_collecte": {
-            "resultats_max_par_code_rome": MAX_PAR_ROME,
+            "resultats_max_par_requete": MAX_PAR_REQUETE,
+            "strategie_partitionnement": "minCreationDate/maxCreationDate, subdivision binaire à la seconde; dates de création France entière; dédoublonnage par identifiant",
             "codes_plafonnes": sorted(r["rome"] for r in extractions_du_jour
                                       if int(r["total"]) > int(r["recuperees"])),
+            "segments_plafonnes": {
+                r["rome"]: int(r.get("segments_plafonnes") or 0)
+                for r in extractions_du_jour if int(r.get("segments_plafonnes") or 0)
+            },
         },
         "metiers": metiers_resume(actives, extractions_du_jour),
         "outils": list(OUTILS),
-        "contrats": {c: contrat_libelle(c)
-                     for c in sorted({o["contrat"] for o in offres if o["contrat"]})},
+        "contrats": contrats_resume(offres),
         "niveaux": NIVEAUX_LIBELLES,
         "formations": FORMATIONS,
         "versions_conservees": nb_versions,
         "sans_position": sum(1 for o in offres if o["lat"] is None),
         "serie": [{"date": d, "par_metier": comptes["total"],
-                   "recuperees_par_metier": comptes["recuperees"]}
+                   "recuperees_par_metier": comptes["recuperees"],
+                   "segments_plafonnes_par_metier": comptes["segments_plafonnes"]}
                   for d, comptes in sorted(serie.items())],
         "offres": offres,
     }
