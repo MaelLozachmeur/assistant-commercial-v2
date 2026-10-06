@@ -76,8 +76,8 @@ const COUL_NIV = { assistant: "#a7c9ff", charge: "#5f9bf5", responsable: "#2a6ad
 const ENCRE_FONCEE = new Set(["assistant", "charge", "autre"]);
 const NIVEAUX_DEFAUT = [["assistant", "Assistant·e / junior"], ["charge", "Chargé·e"], ["responsable", "Responsable"], ["directeur", "Directeur·rice"], ["autre", "Autre"]];
 const FORMATIONS_DEFAUT = ["< Bac", "Bac", "Bac+2", "Bac+3/4", "Bac+5"];
-// Six familles de contrat, exclusives : une offre tombe dans une seule.
-const CONTRATS = [["cdi", "CDI"], ["cdd", "CDD"], ["alt", "Alternance"], ["mis", "Intérim"], ["indep", "Indépendant"], ["autre", "Autre"]];
+// Sept familles de contrat, exclusives : une offre tombe dans une seule.
+const CONTRATS = [["cdi", "CDI"], ["cdd", "CDD"], ["alt", "Alternance"], ["stage", "Stage"], ["mis", "Intérim"], ["indep", "Indépendant"], ["autre", "Autre"]];
 const AURA = new Set(["01", "03", "07", "15", "26", "38", "42", "43", "63", "69", "73", "74"]);
 const IDF = new Set(["75", "77", "78", "91", "92", "93", "94", "95"]);
 const EXPS = ["Débutant accepté", "Moins d'un an", "1 à 2 ans", "3 à 4 ans", "5 ans et plus", "Non précisé"];
@@ -91,6 +91,7 @@ let NIVEAUX = NIVEAUX_DEFAUT, FORMATIONS = FORMATIONS_DEFAUT;
 /* Famille de contrat d'une offre : l'alternance l'emporte sur le CDI/CDD qui la porte. */
 function familleContrat(o) {
   const c = o.contrat || "", nat = o.nature || "";
+  if (c === "STG") return "stage";
   if (o.alternance || nat === "apprentissage" || nat === "professionnalisation") return "alt";
   if (c === "MIS") return "mis";
   if (c === "LIB" || c === "FRA" || c === "CCE" || nat === "non_salarie") return "indep";
@@ -354,13 +355,13 @@ const Commun = {
       const sous = document.getElementById("sous");
       if (sous) {
         const plafonnees = (d.limites_collecte && d.limites_collecte.codes_plafonnes) || [];
-        const plafond = d.limites_collecte && d.limites_collecte.resultats_max_par_code_rome;
+        const plafond = d.limites_collecte && d.limites_collecte.resultats_max_par_requete;
         const avertissement = plafonnees.length
-          ? ` · plafond atteint pour ${plafonnees.join(", ")}`
+          ? ` · résultats incomplets pour ${plafonnees.join(", ")}`
           : "";
         sous.textContent =
           `${d.source} · ${d.requete} · extraction du ${dateFr(d.date)} · ${d.offres.length} offres actives, ${d.versions_conservees} versions conservées` +
-          (plafond ? ` · maximum ${plafond.toLocaleString("fr-FR")} résultats par code ROME` : "") +
+          (plafond ? ` · maximum ${plafond.toLocaleString("fr-FR")} résultats par requête` : "") +
           avertissement;
       }
 
@@ -397,6 +398,10 @@ const Commun = {
 
       // --- Filtre type de contrat ---
       const memoC = memoA("contrats", CONTRATS.map(x => x[0]));
+      if (!memoC.includes("stage") &&
+          CONTRATS.filter(([k]) => k !== "stage").every(([k]) => memoC.includes(k))) {
+        memoC.push("stage");
+      }
       document.getElementById("f-contrats").innerHTML = CONTRATS.map(([k, l]) =>
         `<label><input type="checkbox" value="${k}" ${memoC.includes(k) ? "checked" : ""}> ${l} <small id="nb-c-${k}"></small></label>`).join("");
       // --- Filtre niveau de poste ---

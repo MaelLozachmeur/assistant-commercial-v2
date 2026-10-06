@@ -16,7 +16,11 @@ Les codes et leurs libellés viennent du [référentiel ROME France Travail](htt
 
 ## Actualisation quotidienne
 
-La seule source d'offres est l'API officielle **France Travail — Offres d'emploi v2**. `scripts/extraire.py` interroge l'API pour chacun des codes ROME configurés dans `METIERS`, conserve les versions des annonces et écrit les offres actives dédoublonnées et la série historique. Chaque code est plafonné à **1 150 résultats récupérés** par extraction; le total annoncé par l'API reste enregistré séparément. Les pages signalent les codes au plafond et indiquent les catégories qui n'ont pas encore été collectées. `scripts/resumer.py` produit `data/resume.json`, consommé par les cinq pages HTML. Le workflow `.github/workflows/veille.yml` est planifié chaque jour à 05:00 UTC (07:00 à Paris en été, 06:00 en hiver) et peut également être lancé manuellement.
+La seule source d'offres est l'API officielle **France Travail — Offres d'emploi v2** ([documentation](https://francetravail.io/data/api/offres-emploi)). `scripts/extraire.py` interroge l'API pour chacun des codes ROME configurés dans `METIERS`, conserve les versions des annonces et écrit les offres actives dédoublonnées et la série historique. Le schéma OpenAPI limite une page à 150 offres et autorise `range` jusqu'à `3000-3149`, soit **3 150 résultats par recherche** (contre 1 150 dans l'ancienne limite utilisée par le collecteur). Si le total France entière est supérieur, les paramètres documentés `minCreationDate`/`maxCreationDate` subdivisent récursivement la période en intervalles temporels contigus, à la seconde; les offres des intervalles sont fusionnées et dédoublonnées par identifiant. Cette méthode n'utilise pas le département et conserve donc les offres sans localisation. Le total annoncé par la recherche initiale et le nombre d'offres distinctes récupérées restent enregistrés séparément.
+
+La terminaison est explicite : une fenêtre d'une seconde ne peut plus être subdivisée et le service ne permet pas de paginer au-delà de 3 150 résultats dans cette fenêtre. Si elle contient davantage d'offres, les résultats restent incomplets; le résumé signale le code et le nombre de segments encore plafonnés au lieu de les présenter comme exhaustifs. Si `Content-Range` manque, la collecte échoue plutôt que de déclarer un total inconnu exhaustif. Les changements d'offres pendant l'extraction peuvent aussi faire varier le résultat entre requêtes. Les pages signalent les codes incomplets et les catégories qui n'ont pas encore été collectées. `scripts/resumer.py` produit `data/resume.json`, consommé par les cinq pages HTML. Le workflow `.github/workflows/veille.yml` est planifié chaque jour à 05:00 UTC (07:00 à Paris en été, 06:00 en hiver) et peut également être lancé manuellement.
+
+Le code de contrat France Travail `STG` est affiché sous **Stage**, avec un filtre dédié partagé entre les cinq pages, et figure dans le dictionnaire des contrats du résumé.
 
 Pour activer la collecte sur GitHub :
 
@@ -26,7 +30,7 @@ Pour activer la collecte sur GitHub :
 
 Les identifiants restent côté serveur dans les secrets GitHub Actions. Ils ne doivent jamais être placés dans une page HTML, un fichier de données publié ou un commit. En local, copiez `.env.example` vers `.env` et renseignez les mêmes variables; `.env` est ignoré par Git.
 
-Le résumé publié contient les onze catégories, mais seules D1401 et D1402 ont été collectées à ce jour; les autres apparaissent « à collecter » jusqu'au prochain lancement du workflow. Leurs compteurs restent à zéro sans prétendre que l'API a été interrogée.
+Le résumé publié contient les onze catégories, mais seules D1401 et D1402 ont été collectées à ce jour; les autres apparaissent « à collecter » jusqu'au prochain lancement du workflow. Leurs compteurs restent à zéro sans prétendre que l'API a été interrogée. Le fichier de données actuellement commité date d'avant le nouveau partitionnement; ses codes plafonnés restent explicitement marqués comme extraits sans cette stratégie jusqu'à la prochaine collecte.
 
 ## Développement local
 
@@ -43,7 +47,7 @@ Copy-Item .env.example .env
 
 Ouvrez ensuite `http://localhost:8125`. Le périmètre ROME, les libellés, groupes et choix cochés par défaut se configurent dans `scripts/extraire.py` (`METIERS`); la grille de compétences/mots-clés est dans `scripts/resumer.py` (`OUTILS`). Les pages lisent la taxonomie du résumé et les filtres, graphiques par métier et légende cartographique sont générés à partir de cette liste.
 
-Les tests unitaires de la taxonomie, de la pagination plafonnée, de l'authentification de recherche et de la fusion des extractions s'exécutent avec :
+Les tests unitaires de la taxonomie, du partitionnement temporel, des contrats, de l'authentification de recherche et de la fusion des extractions s'exécutent avec :
 
 ```powershell
 .venv\Scripts\python.exe -m unittest discover -s tests
@@ -51,4 +55,4 @@ Les tests unitaires de la taxonomie, de la pagination plafonnée, de l'authentif
 
 ## Interpréter les chiffres
 
-La veille couvre le seul canal France Travail et une sélection de codes ROME, pas toutes les offres ni tous les intitulés possibles des métiers commerciaux. La limite de l'API est de 1 150 résultats par code et par extraction : si le total annoncé dépasse ce nombre, les statistiques décrivent les offres récupérées et les courbes d'évolution comptent les résultats collectés, sans extrapolation. Les nouvelles catégories n'ont pas d'historique avant leur première extraction. Les compétences sont repérées par une grille de mots-clés configurable, les salaires ne sont analysés que lorsqu'ils sont explicitement indiqués et leur estimation nette est indicative (brut annuel × 0,78 / 12, avant impôt). Les coordonnées approximatives au centre d'une commune ou d'un département ne donnent pas l'adresse de l'employeur.
+La veille couvre le seul canal France Travail et une sélection de codes ROME, pas toutes les offres ni tous les intitulés possibles des métiers commerciaux. La limite de 3 150 résultats par recherche s'applique à chaque requête : le partitionnement par date de création permet de dépasser ce nombre par code lorsque les offres sont réparties sur plusieurs instants, sans garantir l'exhaustivité si un intervalle d'une seconde dépasse encore le plafond ou si l'API évolue pendant l'extraction. Les codes concernés gardent le total annoncé et le nombre effectivement récupéré; les courbes comptent les résultats collectés, sans extrapolation. Les nouvelles catégories n'ont pas d'historique avant leur première extraction. Les compétences sont repérées par une grille de mots-clés configurable, les salaires ne sont analysés que lorsqu'ils sont explicitement indiqués et leur estimation nette est indicative (brut annuel × 0,78 / 12, avant impôt). Les coordonnées approximatives au centre d'une commune ou d'un département ne donnent pas l'adresse de l'employeur.

@@ -24,7 +24,7 @@
 
   <h2 id="limites">Ce que ces chiffres n'autorisent pas à conclure</h2>
   <p class="note">Un seul canal : les chiffres reflètent les offres France Travail, pas l'ensemble des recrutements publiés sur d'autres plateformes ou directement par les entreprises.
-  La recherche est plafonnée à 1 150 résultats par code ROME. Au-delà, le total annoncé par l'API dépasse les offres récupérées : les graphiques décrivent le seul échantillon collecté et ne sont pas exhaustifs.
+Le schéma OpenAPI France Travail limite chaque page à 150 résultats et le paramètre range à l'index 3149, soit 3 150 résultats par recherche. Si un code ROME dépasse ce seuil, la collecte subdivise récursivement les bornes API minCreationDate/maxCreationDate pour la France entière, jusqu'à la seconde, puis dédoublonne par identifiant. Si plus de 3 150 offres partagent le même instant de création à cette précision, le segment ne peut pas être subdivisé davantage : le code est signalé incomplet et les graphiques restent limités aux offres récupérées. Cette méthode ne découpe pas par département et n'exclut donc pas les offres sans localisation.
   Le périmètre est une sélection de codes commerciaux pertinents, pas l'ensemble des métiers de vente : il exclut notamment les spécialités de vente au détail et le conseil en information médicale. Une catégorie indiquée « à collecter » n'a pas encore fait l'objet d'une extraction dans le résumé affiché.
   Les salaires sont ceux des offres qui les affichent, moins d'un tiers : biais probable vers le bas et vers les PME ; le net mensuel est une estimation (brut × 0,78 / 12, avant impôt sur le revenu).
   Le niveau de poste (assistant·e, chargé·e, responsable, directeur·rice) est déduit de l'intitulé de l'annonce : c'est une approximation, un « chef de projet » n'encadre pas toujours.
@@ -61,10 +61,10 @@ function rendre(offres, D) {
     : `${serie.length} extractions, du ${dateFr(serie[0].date)} au ${dateFr(serie[serie.length - 1].date)}. La courbe compte les offres récupérées; elle suit le profil sélectionné, pas les autres filtres.`;
   const plafonnees = D.metiers.filter(m => f.metiers.has(m.code) && m.plafonnee);
   if (plafonnees.length) {
-    const maximum = D.limites_collecte && D.limites_collecte.resultats_max_par_code_rome || 1150;
+    const maximum = D.limites_collecte && D.limites_collecte.resultats_max_par_requete || 1150;
     document.getElementById("note-serie").textContent +=
-      ` Plafond de ${maximum.toLocaleString("fr-FR")} atteint pour ${plafonnees.map(m =>
-        `${m.code} (${m.recuperees} récupérées sur ${m.total_annonce} annoncées)`).join(", ")} : résultats incomplets.`;
+      ` Résultats incomplets (plafond de ${maximum.toLocaleString("fr-FR")} par requête) pour ${plafonnees.map(m =>
+        `${m.code} (${m.recuperees} récupérées sur ${m.total_annonce} annoncées; ${m.partitionnement_applique ? "après partitionnement temporel" : "extraction antérieure au partitionnement"})`).join(", ")}.`;
   }
 
   const FRAIS = [["Moins de 7 jours", j => j < 7], ["7 à 30 jours", j => j >= 7 && j < 30], ["1 à 3 mois", j => j >= 30 && j < 90], ["Plus de 3 mois", j => j >= 90]];
