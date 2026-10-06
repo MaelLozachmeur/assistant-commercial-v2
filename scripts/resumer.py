@@ -29,6 +29,7 @@ import requests
 
 RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE / "scripts"))
+from comparer import normaliser_offre, statistiques_comparatives  # noqa: E402
 from extraire import MAX_PAR_REQUETE, METIERS, code_rome  # noqa: E402  (la liste des métiers vit dans un seul fichier)
 
 # Les outils et compétences recherchés dans les annonces des métiers commerciaux.
@@ -392,6 +393,22 @@ def main():
             },
         },
         "metiers": metiers_resume(actives, extractions_du_jour),
+        "comparaison": statistiques_comparatives(
+            [
+                normaliser_offre("france_travail", {
+                    "id": o["id"],
+                    "title": o["intitule"],
+                    "company": o["entreprise"],
+                    "location": o["lieu"] or o["dep"],
+                    "salary_min": o["smin"],
+                    "salary_max": o["smax"],
+                    "skills": o["competences"],
+                    "tasks": [],
+                })
+                for o in offres
+            ],
+            {"france_travail": "disponible", "wttj": "non_connecte"},
+        ),
         "outils": list(OUTILS),
         "contrats": contrats_resume(offres),
         "niveaux": NIVEAUX_LIBELLES,

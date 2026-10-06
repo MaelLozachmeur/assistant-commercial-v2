@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comparer les sources — les métiers commerciaux</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="assets/commun.css?v=3">
+</head>
+<body>
+<main>
+  <div id="nav-ici"></div>
+  <h1>Comparer les sources</h1>
+  <p class="sous" id="sous">Chargement des données…</p>
+
+  <section class="phrase" aria-labelledby="perimetre">
+    <h2 id="perimetre" style="margin:0 0 8px">Périmètre et disponibilité</h2>
+    <p style="margin:0">Les annonces et indicateurs sont affichés séparément par source. Un rapprochement est un candidat à vérifier, jamais une fusion automatique.</p>
+    <p class="note" id="etat-wttj" style="margin-bottom:0"></p>
+  </section>
+
+  <div class="chiffres" id="chiffres-comparaison" style="margin-top:16px"></div>
+  <div class="grille" style="margin-top:16px">
+    <div class="carte"><h3>Offres actives par source</h3><div class="zone"><canvas id="g-offres-source"></canvas><p class="vide" id="vide-offres" hidden></p></div></div>
+    <div class="carte"><h3>Salaire annuel brut moyen annoncé</h3><div class="zone"><canvas id="g-salaire-source"></canvas><p class="vide" id="vide-salaire" hidden></p></div></div>
+    <div class="carte"><h3>Compétences observées par source <small>— compétences explicites uniquement</small></h3><div class="zone haute"><canvas id="g-competences-source"></canvas><p class="vide" id="vide-competences" hidden></p></div></div>
+    <div class="carte"><h3>Tâches comparables</h3><p class="vide" id="vide-taches"></p></div>
+  </div>
+
+  <section class="carte" style="margin-top:16px">
+    <h2 style="margin:0 0 8px">Candidats doublons inter-sources</h2>
+    <p id="etat-doublons" style="margin:0"></p>
+    <div class="zone haute" style="margin-top:12px"><canvas id="g-doublons"></canvas></div>
+    <p class="note" style="margin-bottom:0">Le score mesure la similarité du titre, de l'employeur, du lieu et du salaire lorsqu'ils sont disponibles. Il ne prouve pas qu'il s'agit de la même annonce. Aucun candidat n'est fusionné sans contrôle humain.</p>
+  </section>
+
+  <footer id="pied"></footer>
+</main>
+
+<script src="assets/commun.js?v=8"></script>
+<script>
+const LABELS_SOURCES = {
+  france_travail: "France Travail",
+  wttj: "Welcome to the Jungle",
+};
+function statistiquesFranceTravail(offres) {
+  const salaires = offres.filter(offre => offre.smin != null)
+    .map(offre => (offre.smin + (offre.smax == null ? offre.smin : offre.smax)) / 2);
+  const competences = new Map();
+  offres.forEach(offre => [...new Set(offre.competences || [])].forEach(label =>
+    competences.set(label, (competences.get(label) || 0) + 1)));
+  return {
+    statut: "disponible",
+    nombre_offres: offres.length,
+    offres_avec_salaire: salaires.length,
+    salaire_moyen_annuel: salaires.length
+      ? Math.round(salaires.reduce((total, salaire) => total + salaire, 0) / salaires.length)
+      : null,
+    competences: [...competences].sort((a, b) => b[1] - a[1]).slice(0, 12)
+      .map(([libelle, nombre_offres]) => ({ libelle, nombre_offres })),
+    taches: [],
+    taches_disponibles: false,
+  };
+}
+
+function rendreComparaison(D) {
+  const comparaison = D.comparaison || {};
+  const sources = Object.assign({
+    france_travail: statistiquesFranceTravail(D.offres || []),
+    wttj: { statut: "non_connecte" },
+  }, comparaison.sources || {});
+  const wttj = sources.wttj || { statut: "non_connecte" };
+  const doublons = comparaison.doublons || { statut: "non_calculable", candidats: [] };
+  const disponibles = ["france_travail", "wttj"].filter(code => sources[code] && sources[code].statut === "disponible");
+  const offresConnues = disponibles.reduce((total, code) => total + (sources[code].nombre_offres || 0), 0);
+  const salaires = disponibles.reduce((total, code) => total + (sources[code].offres_avec_salaire || 0), 0);
+  document.getElementById("chiffres-comparaison").innerHTML = [
+    [`${disponibles.length} / 2`, "sources disponibles"],
+    [offresConnues.toLocaleString("fr-FR"), "offres dans les sources connectées"],
+    [salaires.toLocaleString("fr-FR"), "offres avec salaire communiqué"],
+    [doublons.nombre_candidats == null ? "Non calculable" : doublons.nombre_candidats.toLocaleString("fr-FR"), "candidats doublons à contrôler"],
+  ].map(([valeur, libelle]) => `<div class="chiffre"><b>${valeur}</b><span>${libelle}</span></div>`).join("");
+
+  const wttjConnecte = wttj.statut === "disponible";
+  document.getElementById("etat-wttj").textContent = wttjConnecte
+    ? "Données WTTJ disponibles via un accès autorisé."
+    : "Welcome to the Jungle n'est pas connecté : aucune offre ni statistique WTTJ n'est inventée. Aucune documentation publique officielle d'API d'offres n'a été trouvée; l'intégration attend une documentation et une autorisation officielles.";
+
+  const labels = disponibles.map(code => LABELS_SOURCES[code]);
+  const valeursOffres = disponibles.map(code => sources[code].nombre_offres);
+  if (labels.length) {
+    barres("g-offres-source", labels, valeursOffres, true, " offres");
+  } else {
+    document.getElementById("vide-offres").hidden = false;
+    document.getElementById("vide-offres").textContent = "Aucune source ne fournit de données disponibles.";
+  }
+  const sourcesAvecSalaire = disponibles.filter(code => sources[code].salaire_moyen_annuel != null);
+  if (sourcesAvecSalaire.length) {
+    barres("g-salaire-source", sourcesAvecSalaire.map(code => LABELS_SOURCES[code]),
+      sourcesAvecSalaire.map(code => sources[code].salaire_moyen_annuel), true, " € brut/an");
+  } else {
+    document.getElementById("vide-salaire").hidden = false;
+    document.getElementById("vide-salaire").textContent = "Aucun salaire exploitable dans les sources disponibles.";
+  }
+
+  const competences = disponibles.flatMap(code =>
+    (sources[code].competences || []).map(item => ({ source: code, ...item })));
+  if (competences.length) {
+    const labelsCompetences = [...new Set(competences.map(item => item.libelle))].slice(0, 12);
+    dessiner("g-competences-source", "bar", {
+      labels: labelsCompetences,
+      datasets: disponibles.map((code, index) => ({
+        label: LABELS_SOURCES[code],
+        data: labelsCompetences.map(label => {
+          const item = (sources[code].competences || []).find(x => x.libelle === label);
+          return item ? item.nombre_offres : 0;
+        }),
+        backgroundColor: index ? "#138a5b" : "#0a5cff",
+        borderRadius: 3,
+      })),
+    }, {
+      indexAxis: "y",
+      plugins: { legend: { display: disponibles.length > 1, position: "bottom" } },
+      scales: { x: { beginAtZero: true }, y: { ticks: { autoSkip: false } } },
+    });
+  } else {
+    document.getElementById("vide-competences").hidden = false;
+    document.getElementById("vide-competences").textContent = "Aucune compétence explicite dans les sources disponibles.";
+  }
+
+  const taches = disponibles.some(code => sources[code].taches_disponibles);
+  document.getElementById("vide-taches").textContent = taches
+    ? "Des tâches sont disponibles pour une partie des sources; leur comparaison est limitée à ces données."
+    : "Pas de tâches structurées disponibles. Elles ne sont ni inférées ni fabriquées à partir des intitulés.";
+
+  document.getElementById("etat-doublons").textContent = doublons.statut === "calcule"
+    ? `${doublons.nombre_candidats} paire(s) candidate(s) au rapprochement (seuil ${Math.round(doublons.seuil * 100)} %).`
+    : "Non calculable tant que les deux sources ne fournissent pas de données autorisées.";
+  const candidats = doublons.candidats || [];
+  if (candidats.length) {
+    barres("g-doublons",
+      candidats.slice(0, 20).map(item => `${item.france_travail_id} ↔ ${item.wttj_id} · ${item.confiance}`),
+      candidats.slice(0, 20).map(item => Math.round(item.score * 100)), true, " %");
+  }
+
+  document.getElementById("sous").textContent =
+    `Indicateurs issus du résumé publié le ${dateFr(D.date)}. Les moyennes de salaire sont calculées sur les seules offres avec salaire explicite.`;
+}
+
+Commun.demarrer((_offres, D) => rendreComparaison(D), null, { sansFiltres: true });
+</script>
+</body>
+</html>
