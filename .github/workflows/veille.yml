@@ -1,6 +1,6 @@
 # La veille : chaque matin, GitHub lance l'extraction France Travail sur ses machines,
 # met à jour data/ et le résumé de la page, et enregistre le tout par un commit.
-# Les identifiants sont dans Settings -> Secrets and variables -> Actions (FT_CLIENT_ID, FT_CLIENT_SECRET).
+# Les clés sont dans Settings -> Secrets and variables -> Actions.
 name: veille
 
 on:
@@ -26,13 +26,23 @@ jobs:
       - name: Vérifier la taxonomie et le pipeline
         run: python -m unittest discover -s tests
 
-      - name: Extraire les offres et refaire le résumé
+      - name: Extraire les offres France Travail
         env:
           FT_CLIENT_ID: ${{ secrets.FT_CLIENT_ID }}
           FT_CLIENT_SECRET: ${{ secrets.FT_CLIENT_SECRET }}
         run: |
           python scripts/extraire.py
-          python scripts/resumer.py
+
+      - name: Extraire les offres commerciales WTTJ autorisées
+        env:
+          WTTJ_API_KEY: ${{ secrets.WTTJ_API_KEY }}
+          WTTJ_OUTPUT: ${{ runner.temp }}/wttj-offers.json
+        run: python scripts/extraire_wttj.py
+
+      - name: Refaire le résumé comparatif
+        env:
+          WTTJ_OUTPUT: ${{ runner.temp }}/wttj-offers.json
+        run: python scripts/resumer.py
 
       - name: Enregistrer la donnée du jour (commit + push)
         run: |
