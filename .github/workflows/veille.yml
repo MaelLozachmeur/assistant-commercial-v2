@@ -1,6 +1,6 @@
 # La veille : chaque matin, GitHub lance l'extraction France Travail sur ses machines,
 # met à jour data/ et le résumé de la page, et enregistre le tout par un commit.
-# Les identifiants sont dans Settings -> Secrets and variables -> Actions (FT_CLIENT_ID, FT_CLIENT_SECRET).
+# Les identifiants sont dans Settings -> Secrets and variables -> Actions. Adzuna reste facultatif.
 name: veille
 
 on:
@@ -32,7 +32,16 @@ jobs:
           FT_CLIENT_SECRET: ${{ secrets.FT_CLIENT_SECRET }}
         run: |
           python scripts/extraire.py
-          python scripts/resumer.py
+
+      - name: Collecter les offres Adzuna (facultatif)
+        continue-on-error: true
+        env:
+          ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
+        run: python scripts/adzuna.py
+
+      - name: Générer le résumé du tableau de bord
+        run: python scripts/resumer.py
 
       - name: Enregistrer la donnée du jour (commit + push)
         run: |

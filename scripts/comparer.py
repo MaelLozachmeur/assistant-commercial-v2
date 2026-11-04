@@ -10,7 +10,7 @@ import re
 import unicodedata
 
 
-SOURCES = ("france_travail", "wttj")
+SOURCES = ("france_travail", "wttj", "adzuna")
 
 
 def _texte(value):
@@ -28,10 +28,11 @@ def normaliser_offre(source, offre):
 
     salary_min = _salaire(offre.get("salary_min"))
     salary_max = _salaire(offre.get("salary_max"))
-    if (salary_min is None) != (salary_max is None):
-        raise ValueError("Fournir les deux bornes du salaire ou aucune.")
     if salary_min is not None and salary_max is not None and salary_min > salary_max:
         raise ValueError("Le salaire minimum ne peut pas dépasser le salaire maximum.")
+    predicted = offre.get("salary_is_predicted")
+    if predicted not in (None, True, False):
+        raise ValueError("Le statut du salaire prédit doit être booléen ou absent.")
     return {
         "id": offer_id,
         "source": source,
@@ -40,6 +41,9 @@ def normaliser_offre(source, offre):
         "location": _texte(offre.get("location")),
         "salary_min": salary_min,
         "salary_max": salary_max,
+        "salary_currency": _texte(offre.get("salary_currency")).upper() or None,
+        "salary_period": _texte(offre.get("salary_period")).lower() or None,
+        "salary_is_predicted": predicted,
         "skills": _liste_textes(offre.get("skills")),
         "tasks": _liste_textes(offre.get("tasks")),
     }
@@ -55,6 +59,12 @@ def _salaire(value):
     if not math.isfinite(number) or number <= 0:
         raise ValueError("Les salaires doivent être des nombres positifs et finis.")
     return number
+
+
+def _milieu_salaire(offre):
+    bas = offre["salary_min"] if offre["salary_min"] is not None else offre["salary_max"]
+    haut = offre["salary_max"] if offre["salary_max"] is not None else bas
+    return (bas + haut) / 2
 
 
 def _liste_textes(values):
@@ -80,10 +90,22 @@ def _score_candidat(left, right):
     company = _similarite(left["company"], right["company"])
     location = _similarite(left["location"], right["location"])
     salary = None
-    if left["salary_min"] is not None and right["salary_min"] is not None:
-        left_low = left["salary_min"]
+    salaires_comparables = (
+        left["salary_currency"] is not None
+        and left["salary_currency"] == right["salary_currency"]
+        and left["salary_period"] is not None
+        and left["salary_period"] == right["salary_period"]
+        and left["salary_is_predicted"] is False
+        and right["salary_is_predicted"] is False
+    )
+    if (
+        salaires_comparables
+        and (left["salary_min"] is not None or left["salary_max"] is not None)
+        and (right["salary_min"] is not None or right["salary_max"] is not None)
+    ):
+        left_low = left["salary_min"] if left["salary_min"] is not None else left["salary_max"]
         left_high = left["salary_max"] or left_low
-        right_low = right["salary_min"]
+        right_low = right["salary_min"] if right["salary_min"] is not None else right["salary_max"]
         right_high = right["salary_max"] or right_low
         if max(left_low, right_low) <= min(left_high, right_high):
             salary = 1.0
@@ -117,13 +139,18 @@ def candidats_doublons(offres, seuil=0.75):
             if score is None or score < seuil:
                 continue
             resultats.append({
-                "france_travail_id": left["id"] if left["source"] == "france_travail" else right["id"],
-                "wttj_id": left["id"] if left["source"] == "wttj" else right["id"],
+                "source_a": left["source"],
+                "id_a": left["id"],
+                "source_b": right["source"],
+                "id_b": right["id"],
                 "score": score,
                 "confiance": "élevée" if score >= 0.9 else "à vérifier",
                 "decision": "revue_manuelle_requise",
             })
-    return sorted(resultats, key=lambda candidate: (-candidate["score"], candidate["france_travail_id"]))
+    return sorted(resultats, key=lambda candidate: (
+        -candidate["score"], candidate["source_a"], candidate["id_a"],
+        candidate["source_b"], candidate["id_b"],
+    ))
 
 
 def statistiques_comparatives(offres, statuts_sources, seuil=0.75):
@@ -140,15 +167,40 @@ def statistiques_comparatives(offres, statuts_sources, seuil=0.75):
         disponibles = statut == "disponible"
         liste = par_source[source] if disponibles else []
         salaires = [
-            (offre["salary_min"] + (offre["salary_max"] or offre["salary_min"])) / 2
-            for offre in liste if offre["salary_min"] is not None
+            _milieu_salaire(offre)
+            for offre in liste
+            if (offre["salary_min"] is not None or offre["salary_max"] is not None)
+            and offre["salary_is_predicted"] is False
+            and offre["salary_currency"] == "EUR"
+            and offre["salary_period"] == "annual"
+        ]
+        salaires_declares = [
+            offre for offre in liste
+            if (offre["salary_min"] is not None or offre["salary_max"] is not None)
+            and offre["salary_is_predicted"] is False
+        ]
+        salaires_predits = [
+            offre for offre in liste
+            if (offre["salary_min"] is not None or offre["salary_max"] is not None)
+            and offre["salary_is_predicted"] is True
+        ]
+        salaires_non_qualifies = [
+            offre for offre in liste
+            if (offre["salary_min"] is not None or offre["salary_max"] is not None)
+            and offre["salary_is_predicted"] is None
         ]
         competences = Counter(skill for offre in liste for skill in offre["skills"])
         taches = Counter(task for offre in liste for task in offre["tasks"])
         sources[source] = {
             "statut": statut,
             "nombre_offres": len(liste) if disponibles else None,
-            "offres_avec_salaire": len(salaires) if disponibles else None,
+            "offres_avec_salaire": (
+                len(salaires_declares) + len(salaires_predits) + len(salaires_non_qualifies)
+                if disponibles else None
+            ),
+            "offres_avec_salaire_declare": len(salaires_declares) if disponibles else None,
+            "offres_avec_salaire_estime": len(salaires_predits) if disponibles else None,
+            "offres_avec_salaire_non_qualifie": len(salaires_non_qualifies) if disponibles else None,
             "salaire_moyen_annuel": round(sum(salaires) / len(salaires)) if salaires else None,
             "competences": [
                 {"libelle": label, "nombre_offres": count}
@@ -161,15 +213,16 @@ def statistiques_comparatives(offres, statuts_sources, seuil=0.75):
             "taches_disponibles": bool(taches),
         }
 
-    deux_sources_disponibles = all(
-        sources[source]["statut"] == "disponible" for source in SOURCES
-    )
-    candidats = candidats_doublons(offres, seuil) if deux_sources_disponibles else []
+    sources_connectees = [source for source in SOURCES if sources[source]["statut"] == "disponible"]
+    comparaison_possible = len(sources_connectees) >= 2
+    candidats = candidats_doublons(
+        [offre for offre in offres if offre["source"] in sources_connectees], seuil,
+    ) if comparaison_possible else []
     return {
         "sources": sources,
         "doublons": {
-            "statut": "calcule" if deux_sources_disponibles else "non_calculable",
-            "nombre_candidats": len(candidats) if deux_sources_disponibles else None,
+            "statut": "calcule" if comparaison_possible else "non_calculable",
+            "nombre_candidats": len(candidats) if comparaison_possible else None,
             "seuil": seuil,
             "candidats": candidats,
         },

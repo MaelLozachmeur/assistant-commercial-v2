@@ -298,6 +298,12 @@ class Geocodeur:
 
 
 def main():
+    fichier_adzuna = RACINE / "data" / "adzuna.json"
+    if fichier_adzuna.exists():
+        donnees_adzuna = json.loads(fichier_adzuna.read_text(encoding="utf-8"))
+    else:
+        donnees_adzuna = {"status": "non_configure", "offres": []}
+
     jours = sorted((RACINE / "data" / "actives").glob("*.csv"))
     if not jours:
         raise SystemExit("Aucune extraction : lancez d'abord scripts/extraire.py")
@@ -393,8 +399,9 @@ def main():
             },
         },
         "metiers": metiers_resume(actives, extractions_du_jour),
-        "comparaison": statistiques_comparatives(
-            [
+        "comparaison": {
+            **statistiques_comparatives(
+                [
                 normaliser_offre("france_travail", {
                     "id": o["id"],
                     "title": o["intitule"],
@@ -402,13 +409,38 @@ def main():
                     "location": o["lieu"] or o["dep"],
                     "salary_min": o["smin"],
                     "salary_max": o["smax"],
+                    "salary_currency": "EUR",
+                    "salary_period": "annual",
+                    "salary_is_predicted": False,
                     "skills": o["competences"],
                     "tasks": [],
                 })
                 for o in offres
-            ],
-            {"france_travail": "disponible", "wttj": "non_connecte"},
-        ),
+                ] + [
+                    normaliser_offre("adzuna", {
+                        "id": offre["id"],
+                        "title": offre["title"],
+                        "company": offre["company"],
+                        "location": offre["location"],
+                        "salary_min": offre["salary_min"],
+                        "salary_max": offre["salary_max"],
+                        "salary_currency": offre["salary_currency"],
+                        "salary_period": offre["salary_period"],
+                        "salary_is_predicted": offre["salary_is_predicted"],
+                        "skills": [],
+                    })
+                    for offre in donnees_adzuna.get("offres", [])
+                ],
+                {
+                    "france_travail": "disponible",
+                    "wttj": "non_connecte",
+                    "adzuna": donnees_adzuna.get("status", "non_configure"),
+                },
+            ),
+            "offres_adzuna": donnees_adzuna.get("offres", []),
+            "requetes_adzuna": donnees_adzuna.get("requetes", []),
+            "adzuna_message": donnees_adzuna.get("message"),
+        },
         "outils": list(OUTILS),
         "contrats": contrats_resume(offres),
         "niveaux": NIVEAUX_LIBELLES,

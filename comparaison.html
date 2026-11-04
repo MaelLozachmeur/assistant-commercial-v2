@@ -16,16 +16,23 @@
   <section class="phrase" aria-labelledby="perimetre">
     <h2 id="perimetre" style="margin:0 0 8px">Périmètre et disponibilité</h2>
     <p style="margin:0">Les annonces et indicateurs sont affichés séparément par source. Un rapprochement est un candidat à vérifier, jamais une fusion automatique.</p>
-    <p class="note" id="etat-wttj" style="margin-bottom:0"></p>
+    <p class="note" id="etat-sources" style="margin-bottom:0"></p>
   </section>
 
   <div class="chiffres" id="chiffres-comparaison" style="margin-top:16px"></div>
   <div class="grille" style="margin-top:16px">
     <div class="carte"><h3>Offres actives par source</h3><div class="zone"><canvas id="g-offres-source"></canvas><p class="vide" id="vide-offres" hidden></p></div></div>
-    <div class="carte"><h3>Salaire annuel brut moyen annoncé</h3><div class="zone"><canvas id="g-salaire-source"></canvas><p class="vide" id="vide-salaire" hidden></p></div></div>
+    <div class="carte"><h3>Salaire annuel brut moyen déclaré comparable</h3><div class="zone"><canvas id="g-salaire-source"></canvas><p class="vide" id="vide-salaire" hidden></p></div><p class="note">Moyenne arithmétique des milieux de fourchettes déclarées, en EUR/an uniquement. Les salaires prédits ou dont la période n'est pas confirmée sont exclus.</p></div>
     <div class="carte"><h3>Compétences observées par source <small>— compétences explicites uniquement</small></h3><div class="zone haute"><canvas id="g-competences-source"></canvas><p class="vide" id="vide-competences" hidden></p></div></div>
     <div class="carte"><h3>Tâches comparables</h3><p class="vide" id="vide-taches"></p></div>
   </div>
+
+  <section class="carte" style="margin-top:16px">
+    <h2 style="margin:0 0 8px">Annonces Adzuna collectées</h2>
+    <p class="note">Source : <a href="https://www.adzuna.fr/" target="_blank" rel="noopener noreferrer">Adzuna</a>. Chaque lien ouvre l'annonce originale. Les résultats sont limités aux recherches françaises configurées.</p>
+    <p class="vide" id="vide-adzuna"></p>
+    <div id="offres-adzuna"></div>
+  </section>
 
   <section class="carte" style="margin-top:16px">
     <h2 style="margin:0 0 8px">Candidats doublons inter-sources</h2>
@@ -42,10 +49,24 @@
 const LABELS_SOURCES = {
   france_travail: "France Travail",
   wttj: "Welcome to the Jungle",
+  adzuna: "Adzuna",
 };
+function echapperHTML(valeur) {
+  return String(valeur == null ? "" : valeur).replace(/[&<>"']/g, caractere =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[caractere]);
+}
+function lienHTTP(valeur) {
+  try {
+    const url = new URL(valeur);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.href : "";
+  } catch (_erreur) {
+    return "";
+  }
+}
 function statistiquesFranceTravail(offres) {
-  const salaires = offres.filter(offre => offre.smin != null)
-    .map(offre => (offre.smin + (offre.smax == null ? offre.smin : offre.smax)) / 2);
+  const salaires = offres.filter(offre => offre.smin != null || offre.smax != null)
+    .map(offre => ((offre.smin == null ? offre.smax : offre.smin)
+      + (offre.smax == null ? offre.smin : offre.smax)) / 2);
   const competences = new Map();
   offres.forEach(offre => [...new Set(offre.competences || [])].forEach(label =>
     competences.set(label, (competences.get(label) || 0) + 1)));
@@ -68,23 +89,60 @@ function rendreComparaison(D) {
   const sources = Object.assign({
     france_travail: statistiquesFranceTravail(D.offres || []),
     wttj: { statut: "non_connecte" },
+    adzuna: { statut: "non_configure" },
   }, comparaison.sources || {});
   const wttj = sources.wttj || { statut: "non_connecte" };
+  const adzuna = sources.adzuna || { statut: "non_configure" };
+  const adzunaMessage = adzuna.message || comparaison.adzuna_message;
   const doublons = comparaison.doublons || { statut: "non_calculable", candidats: [] };
-  const disponibles = ["france_travail", "wttj"].filter(code => sources[code] && sources[code].statut === "disponible");
+  const disponibles = Object.keys(LABELS_SOURCES).filter(code => sources[code] && sources[code].statut === "disponible");
   const offresConnues = disponibles.reduce((total, code) => total + (sources[code].nombre_offres || 0), 0);
   const salaires = disponibles.reduce((total, code) => total + (sources[code].offres_avec_salaire || 0), 0);
   document.getElementById("chiffres-comparaison").innerHTML = [
-    [`${disponibles.length} / 2`, "sources disponibles"],
+    [`${disponibles.length} / ${Object.keys(LABELS_SOURCES).length}`, "sources disponibles"],
     [offresConnues.toLocaleString("fr-FR"), "offres dans les sources connectées"],
     [salaires.toLocaleString("fr-FR"), "offres avec salaire communiqué"],
     [doublons.nombre_candidats == null ? "Non calculable" : doublons.nombre_candidats.toLocaleString("fr-FR"), "candidats doublons à contrôler"],
   ].map(([valeur, libelle]) => `<div class="chiffre"><b>${valeur}</b><span>${libelle}</span></div>`).join("");
 
   const wttjConnecte = wttj.statut === "disponible";
-  document.getElementById("etat-wttj").textContent = wttjConnecte
+  const adzunaConnecte = adzuna.statut === "disponible";
+  document.getElementById("etat-sources").textContent = (wttjConnecte
     ? "Données WTTJ disponibles via un accès autorisé."
-    : "Welcome to the Jungle n'est pas connecté : aucune offre ni statistique WTTJ n'est inventée. Aucune documentation publique officielle d'API d'offres n'a été trouvée; l'intégration attend une documentation et une autorisation officielles.";
+    : "Welcome to the Jungle n'est pas connecté : aucune offre ni statistique WTTJ n'est inventée. ") +
+    (adzunaConnecte
+      ? "Adzuna est connecté; les annonces et leurs liens sources sont affichés ci-dessous."
+      : adzuna.statut === "erreur"
+        ? `La collecte Adzuna a échoué : ${adzunaMessage || "erreur API"}. Les offres ne sont pas disponibles.`
+        : "Adzuna n'est pas configuré : ajoutez ADZUNA_APP_ID et ADZUNA_APP_KEY comme secrets GitHub Actions. Aucun résultat n'est simulé.");
+
+  const offresAdzuna = comparaison.offres_adzuna || [];
+  const recherchesPlafonnees = (comparaison.requetes_adzuna || []).filter(requete => requete.plafonnee);
+  const mentionPlafond = recherchesPlafonnees.length
+    ? ` ${recherchesPlafonnees.length} recherche(s) ont atteint la limite de pagination; couverture possiblement incomplète.`
+    : "";
+  document.getElementById("vide-adzuna").textContent = offresAdzuna.length
+    ? `${offresAdzuna.length} annonce(s) Adzuna, dédoublonnées par identifiant.${mentionPlafond}`
+    : (adzuna.statut === "disponible"
+      ? `Aucune annonce retournée par les recherches Adzuna.${mentionPlafond}`
+      : adzuna.statut === "erreur"
+        ? "Aucune annonce Adzuna disponible à la suite de l'erreur de collecte."
+        : "Pas encore de données Adzuna.");
+  document.getElementById("offres-adzuna").innerHTML = offresAdzuna.slice(0, 30).map(offre => {
+    const lien = lienHTTP(offre.redirect_url);
+    const hasSalary = offre.salary_min != null || offre.salary_max != null;
+    const low = offre.salary_min == null ? offre.salary_max : offre.salary_min;
+    const high = offre.salary_max == null ? low : offre.salary_max;
+    const salaire = !hasSalary ? "" :
+      `${Number(low).toLocaleString("fr-FR")}${low === high ? "" : ` – ${Number(high).toLocaleString("fr-FR")}`} EUR · ` +
+      (offre.salary_is_predicted === true ? "estimation Adzuna" :
+        offre.salary_is_predicted === false ? "salaire déclaré" : "statut estimation inconnu") +
+      " · période non précisée";
+    return `<p>${lien ? `<a href="${echapperHTML(lien)}" target="_blank" rel="noopener noreferrer">${echapperHTML(offre.title)}</a>` : echapperHTML(offre.title)}`
+      + `${offre.company ? ` — ${echapperHTML(offre.company)}` : ""}`
+      + `${offre.location ? ` · ${echapperHTML(offre.location)}` : ""}`
+      + `${salaire ? `<br><small>${echapperHTML(salaire)}</small>` : ""}</p>`;
+  }).join("");
 
   const labels = disponibles.map(code => LABELS_SOURCES[code]);
   const valeursOffres = disponibles.map(code => sources[code].nombre_offres);
@@ -135,11 +193,11 @@ function rendreComparaison(D) {
 
   document.getElementById("etat-doublons").textContent = doublons.statut === "calcule"
     ? `${doublons.nombre_candidats} paire(s) candidate(s) au rapprochement (seuil ${Math.round(doublons.seuil * 100)} %).`
-    : "Non calculable tant que les deux sources ne fournissent pas de données autorisées.";
+    : "Non calculable tant qu'au moins deux sources ne fournissent pas de données.";
   const candidats = doublons.candidats || [];
   if (candidats.length) {
     barres("g-doublons",
-      candidats.slice(0, 20).map(item => `${item.france_travail_id} ↔ ${item.wttj_id} · ${item.confiance}`),
+      candidats.slice(0, 20).map(item => `${LABELS_SOURCES[item.source_a]} ${item.id_a} ↔ ${LABELS_SOURCES[item.source_b]} ${item.id_b} · ${item.confiance}`),
       candidats.slice(0, 20).map(item => Math.round(item.score * 100)), true, " %");
   }
 

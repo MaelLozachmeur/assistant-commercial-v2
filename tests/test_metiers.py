@@ -213,20 +213,23 @@ class MetiersTest(unittest.TestCase):
         self.assertNotIn("email", offre)
         with self.assertRaises(ValueError):
             normaliser_offre("wttj", {"id": "sans-titre"})
-        with self.assertRaises(ValueError):
-            normaliser_offre("wttj", {
-                "id": "salaire-incomplet", "title": "Commercial",
-                "salary_min": 40000,
-            })
+        incomplet = normaliser_offre("adzuna", {
+            "id": "salaire-partiel", "title": "Commercial",
+            "salary_min": 40000,
+        })
+        self.assertEqual(incomplet["salary_min"], 40000)
+        self.assertIsNone(incomplet["salary_max"])
 
     def test_candidats_doublons_sont_inter_sources_scores_et_non_fusionnes(self):
         ft = normaliser_offre("france_travail", {
             "id": "ft-1", "title": "Commercial B2B H/F", "company": "Acme Conseil",
             "location": "Paris", "salary_min": 40000, "salary_max": 50000,
+            "salary_currency": "EUR", "salary_period": "annual", "salary_is_predicted": False,
         })
         wttj = normaliser_offre("wttj", {
             "id": "wttj-9", "title": "Commercial B2B", "company": "Acme Conseil",
             "location": "Paris", "salary_min": 42000, "salary_max": 48000,
+            "salary_currency": "EUR", "salary_period": "annual", "salary_is_predicted": False,
         })
         different = normaliser_offre("wttj", {
             "id": "wttj-10", "title": "Commercial B2B", "company": "Autre société",
@@ -236,8 +239,10 @@ class MetiersTest(unittest.TestCase):
         candidats = candidats_doublons([ft, wttj, different])
 
         self.assertEqual(len(candidats), 1)
-        self.assertEqual(candidats[0]["france_travail_id"], "ft-1")
-        self.assertEqual(candidats[0]["wttj_id"], "wttj-9")
+        self.assertEqual(candidats[0]["source_a"], "france_travail")
+        self.assertEqual(candidats[0]["id_a"], "ft-1")
+        self.assertEqual(candidats[0]["source_b"], "wttj")
+        self.assertEqual(candidats[0]["id_b"], "wttj-9")
         self.assertEqual(candidats[0]["confiance"], "élevée")
         self.assertEqual(candidats[0]["decision"], "revue_manuelle_requise")
         self.assertEqual(candidats_doublons([ft, ft]), [])
@@ -246,11 +251,13 @@ class MetiersTest(unittest.TestCase):
         ft_offres = [
             normaliser_offre("france_travail", {
                 "id": "ft-1", "title": "Commercial", "salary_min": 40000,
-                "salary_max": 50000, "skills": ["CRM"],
+                "salary_max": 50000, "salary_currency": "EUR", "salary_period": "annual",
+                "salary_is_predicted": False, "skills": ["CRM"],
             }),
             normaliser_offre("france_travail", {
                 "id": "ft-2", "title": "Chargé commercial", "salary_min": 50000,
-                "salary_max": 50000, "skills": ["CRM", "Négociation"],
+                "salary_max": 50000, "salary_currency": "EUR", "salary_period": "annual",
+                "salary_is_predicted": False, "skills": ["CRM", "Négociation"],
             }),
         ]
 
@@ -261,6 +268,7 @@ class MetiersTest(unittest.TestCase):
 
         self.assertEqual(resume["sources"]["france_travail"]["nombre_offres"], 2)
         self.assertEqual(resume["sources"]["france_travail"]["salaire_moyen_annuel"], 47500)
+        self.assertEqual(resume["sources"]["adzuna"]["statut"], "non_connecte")
         self.assertEqual(resume["sources"]["france_travail"]["competences"][0],
                          {"libelle": "CRM", "nombre_offres": 2})
         self.assertFalse(resume["sources"]["france_travail"]["taches_disponibles"])
@@ -291,7 +299,7 @@ class MetiersTest(unittest.TestCase):
 
     def test_page_comparaison_affiche_les_etats_vides_sans_api_wttj_devinee(self):
         page = (Path(__file__).resolve().parent.parent / "comparaison.html").read_text(encoding="utf-8")
-        self.assertIn("Non calculable tant que les deux sources", page)
+        self.assertIn("Non calculable tant qu'au moins deux sources", page)
         self.assertIn("aucune offre ni statistique WTTJ n'est inventée", page)
         self.assertNotIn("api.welcometothejungle.com/", page)
         source = (Path(__file__).resolve().parent.parent / "assets" / "commun.js").read_text(encoding="utf-8")
