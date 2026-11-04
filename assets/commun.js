@@ -262,8 +262,26 @@ const HTML_FILTRES = `
 
 function poserNavEtFiltres() {
   const n = document.getElementById("nav-ici");
-  if (n) n.outerHTML = `<nav class="nav">` + PAGES.map(([url, lib]) =>
+  if (n) n.outerHTML = `<a class="skip-link" href="#contenu">Aller au contenu</a><nav class="nav" aria-label="Navigation principale">` + PAGES.map(([url, lib]) =>
     `<a href="${url}"${url === PAGE_ICI ? ' class="ici" aria-current="page"' : ""}>${lib}</a>`).join("") + `</nav>`;
+
+  const main = document.querySelector("main");
+  if (main) main.id = "contenu";
+  const titre = main && main.querySelector(":scope > h1");
+  const sous = main && main.querySelector(":scope > #sous");
+  if (titre && sous) {
+    const entete = document.createElement("header");
+    entete.className = "page-header";
+    titre.before(entete);
+    entete.append(titre, sous);
+    sous.setAttribute("role", "status");
+    sous.setAttribute("aria-live", "polite");
+  }
+  document.querySelectorAll("canvas[id]").forEach(canvas => {
+    const titreGraphique = canvas.closest(".carte")?.querySelector("h3, h2");
+    canvas.setAttribute("role", "img");
+    if (titreGraphique) canvas.setAttribute("aria-label", titreGraphique.textContent.trim());
+  });
 
   const etat = document.createElement("div");
   etat.className = "vide";
@@ -279,6 +297,8 @@ function poserNavEtFiltres() {
     // Ailleurs : replié, on vient lire une page, pas refaire ses filtres.
     : `<details class="carte"><summary id="resume-filtres">Filtres</summary>${HTML_FILTRES}</details>`)
     + `<div class="vide" id="aucune" hidden>Aucune offre ne correspond à ces filtres. Recochez un métier, un type de contrat ou un niveau de poste.</div>`;
+  const compte = document.getElementById("compte");
+  if (compte) compte.setAttribute("aria-live", "polite");
 
   const p = document.getElementById("pied");
   if (p) p.innerHTML =

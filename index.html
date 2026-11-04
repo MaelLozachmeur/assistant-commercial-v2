@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/MarkerCluster.min.css">
 <script src="https://cdn.jsdelivr.net/npm/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<link rel="stylesheet" href="assets/commun.css?v=3">
+<link rel="stylesheet" href="assets/commun.css?v=4">
 </head>
 <body>
 <main>
@@ -29,15 +29,15 @@
   <h2>Où sont les offres commerciales</h2>
   <div class="carte large"><h3>Chaque point est une offre — survolez pour la lire, cliquez pour l'ouvrir</h3>
     <div class="carte-outils">
-      <button data-vue="france">France</button>
-      <button data-vue="clermont">Clermont</button>
-      <button data-vue="aura">Auvergne-Rhône-Alpes</button>
-      <button data-vue="paris">Île-de-France</button>
-      <button data-fond="gris" class="actif">Fond gris</button>
-      <button data-fond="osm">Fond OpenStreetMap</button>
+      <button data-vue="france" class="actif" aria-pressed="true">France</button>
+      <button data-vue="clermont" aria-pressed="false">Clermont</button>
+      <button data-vue="aura" aria-pressed="false">Auvergne-Rhône-Alpes</button>
+      <button data-vue="paris" aria-pressed="false">Île-de-France</button>
+      <button data-fond="gris" class="actif" aria-pressed="true">Fond gris</button>
+      <button data-fond="osm" aria-pressed="false">Fond OpenStreetMap</button>
       <span class="legende" id="legende-metiers"></span>
     </div>
-    <div id="map"></div>
+    <div id="map" role="region" aria-label="Carte interactive des offres commerciales"></div>
     <p class="note" id="note-carte"></p></div>
   <div class="grille" style="margin-top:16px">
     <div class="carte"><h3>Par département <small>— les 15 premiers</small></h3><div class="zone"><canvas id="g-departements"></canvas></div></div>
@@ -58,7 +58,7 @@
   <footer id="pied"></footer>
 </main>
 
-<script src="assets/commun.js?v=8"></script>
+<script src="assets/commun.js?v=9"></script>
 <script>
 /* ============ Accueil : chiffres, carte, départements, contrats ============ */
 let carte, calque;
@@ -136,10 +136,21 @@ calque = L.markerClusterGroup({
   iconCreateFunction: c => { const k = c.getChildCount(), t = k < 10 ? "petite" : k < 100 ? "moyenne" : "grande", dia = k < 10 ? 28 : k < 100 ? 36 : 46;
     return L.divIcon({ html: `<div class="grappe ${t}" style="width:${dia}px;height:${dia}px">${k}</div>`, className: "", iconSize: [dia, dia] }); }
 }).addTo(carte);
-document.querySelectorAll("[data-vue]").forEach(b => b.addEventListener("click", () => carte.flyTo(...VUES[b.dataset.vue])));
+document.querySelectorAll("[data-vue]").forEach(b => b.addEventListener("click", () => {
+  carte.flyTo(...VUES[b.dataset.vue]);
+  document.querySelectorAll("[data-vue]").forEach(x => {
+    const actif = x === b;
+    x.classList.toggle("actif", actif);
+    x.setAttribute("aria-pressed", String(actif));
+  });
+}));
 document.querySelectorAll("[data-fond]").forEach(b => b.addEventListener("click", () => {
   Object.values(FONDS).forEach(fo => carte.removeLayer(fo)); FONDS[b.dataset.fond].addTo(carte);
-  document.querySelectorAll("[data-fond]").forEach(x => x.classList.toggle("actif", x === b));
+  document.querySelectorAll("[data-fond]").forEach(x => {
+    const actif = x === b;
+    x.classList.toggle("actif", actif);
+    x.setAttribute("aria-pressed", String(actif));
+  });
 }));
 
 Commun.demarrer(rendre);
