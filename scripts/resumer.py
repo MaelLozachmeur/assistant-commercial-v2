@@ -19,6 +19,7 @@ La page recalcule ensuite tous les comptages côté navigateur, selon les métie
 """
 import csv
 import json
+import os
 import re
 import sys
 import time
@@ -142,6 +143,35 @@ def contrats_resume(offres):
     """Inclut les contrats connus même si aucune offre du jour ne les utilise."""
     observes = {o["contrat"] for o in offres if o.get("contrat")}
     return {**CONTRATS, **{code: contrat_libelle(code) for code in observes}}
+
+
+def lire_wttj():
+    """Lit les seules données comparatives minimisées, stockées dans RUNNER_TEMP."""
+    chemin = os.getenv("WTTJ_OUTPUT")
+    if not chemin:
+        return [], "non_connecte", "non_configure"
+    fichier = Path(chemin)
+    if not fichier.is_file():
+        raise RuntimeError(f"Fichier de sortie WTTJ absent : {fichier}")
+    try:
+        donnees = json.loads(fichier.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError("Impossible de lire le résultat temporaire WTTJ.") from exc
+    if not isinstance(donnees, dict) or donnees.get("status") not in (
+        "disponible", "non_configure",
+    ):
+        raise RuntimeError("Statut invalide dans le résultat temporaire WTTJ.")
+    offres_brutes = donnees.get("offers")
+    if not isinstance(offres_brutes, list):
+        raise RuntimeError("Liste d'offres invalide dans le résultat temporaire WTTJ.")
+    if donnees["status"] == "non_configure":
+        if offres_brutes:
+            raise RuntimeError("Une collecte WTTJ non configurée ne peut contenir d'offres.")
+        return [], "non_connecte", "non_configure"
+    offres = [
+        normaliser_offre("wttj", offre) for offre in offres_brutes
+    ]
+    return offres, "disponible", "partenariat_toutes_organisations"
 
 
 def nature(o):
@@ -378,6 +408,31 @@ def main():
             if r["date"] == jour:
                 extractions_du_jour.append(r)
 
+    offres_wttj, statut_wttj, portee_wttj = lire_wttj()
+    comparaison = statistiques_comparatives(
+        [
+            normaliser_offre("france_travail", {
+                "id": o["id"],
+                "title": o["intitule"],
+                "company": o["entreprise"],
+                "location": o["lieu"] or o["dep"],
+                "salary_min": o["smin"],
+                "salary_max": o["smax"],
+                "skills": o["competences"],
+                "tasks": [],
+            })
+            for o in offres
+        ] + offres_wttj,
+        {"france_travail": "disponible", "wttj": statut_wttj},
+        doublons_calculables=False,
+    )
+    comparaison["sources"]["wttj"].update({
+        "portee": portee_wttj,
+        "couverture_geographique": "non_documentee",
+        "methode_filtrage": "intitule et profession_reference par mots-clés",
+        "champs_localisation_employeur": False,
+    })
+
     resume = {
         "date": jour,
         "source": "France Travail — API Offres d'emploi v2",
@@ -393,22 +448,7 @@ def main():
             },
         },
         "metiers": metiers_resume(actives, extractions_du_jour),
-        "comparaison": statistiques_comparatives(
-            [
-                normaliser_offre("france_travail", {
-                    "id": o["id"],
-                    "title": o["intitule"],
-                    "company": o["entreprise"],
-                    "location": o["lieu"] or o["dep"],
-                    "salary_min": o["smin"],
-                    "salary_max": o["smax"],
-                    "skills": o["competences"],
-                    "tasks": [],
-                })
-                for o in offres
-            ],
-            {"france_travail": "disponible", "wttj": "non_connecte"},
-        ),
+        "comparaison": comparaison,
         "outils": list(OUTILS),
         "contrats": contrats_resume(offres),
         "niveaux": NIVEAUX_LIBELLES,

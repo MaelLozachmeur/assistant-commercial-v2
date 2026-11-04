@@ -83,8 +83,8 @@ function rendreComparaison(D) {
 
   const wttjConnecte = wttj.statut === "disponible";
   document.getElementById("etat-wttj").textContent = wttjConnecte
-    ? "Données WTTJ disponibles via un accès autorisé."
-    : "Welcome to the Jungle n'est pas connecté : aucune offre ni statistique WTTJ n'est inventée. Aucune documentation publique officielle d'API d'offres n'a été trouvée; l'intégration attend une documentation et une autorisation officielles.";
+    ? "Accès partenaire WTTJ su_jobs_r : offres publiées de toutes les organisations, filtrées par intitulé et référence de profession. La couverture géographique de l’API n’est pas documentée : ces chiffres ne représentent pas toutes les offres en France. Les champs employeur et lieu nécessaires au rapprochement ne sont pas disponibles."
+    : "Welcome to the Jungle n'est pas connecté : aucune offre ni statistique WTTJ n'est inventée. L'endpoint multi-organisations exige un partenariat et le scope su_jobs_r; ajoutez WTTJ_API_KEY dans les secrets Actions après obtention de cet accès.";
 
   const labels = disponibles.map(code => LABELS_SOURCES[code]);
   const valeursOffres = disponibles.map(code => sources[code].nombre_offres);
@@ -135,7 +135,9 @@ function rendreComparaison(D) {
 
   document.getElementById("etat-doublons").textContent = doublons.statut === "calcule"
     ? `${doublons.nombre_candidats} paire(s) candidate(s) au rapprochement (seuil ${Math.round(doublons.seuil * 100)} %).`
-    : "Non calculable tant que les deux sources ne fournissent pas de données autorisées.";
+    : doublons.raison === "champs_rapprochement_absents"
+      ? "Non calculable : la réponse WTTJ documentée ne fournit pas les champs employeur et lieu nécessaires au rapprochement."
+      : "Non calculable tant que les deux sources ne fournissent pas de données autorisées.";
   const candidats = doublons.candidats || [];
   if (candidats.length) {
     barres("g-doublons",
